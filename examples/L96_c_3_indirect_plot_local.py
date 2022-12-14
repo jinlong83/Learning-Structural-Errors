@@ -136,11 +136,14 @@ def plot_data():
     G = G[-1,:,:]
     G_mean = np.mean(G, axis = 0)
     G_cov = np.cov(G.T)
-    x_min = -10
-    x_max = 15
+    x_min = -2
+    x_max = 10
     plt.plot([x_min,x_max], [x_min,x_max], 'k--', lw = 2)
-    plt.plot(y_mean[:8], G_mean[:8], 'o', markersize=12, color = "#a6cee3", alpha=1.0, label='First moments')
-    plt.plot(y_mean[8:], G_mean[8:], '^', markersize=12, color = "#1f78b4", alpha=1.0, label='Second moments')
+    plt.plot(y_mean[:36], G_mean[:36], 'o', markersize=12, color = "#a6cee3", alpha=1.0, label='First moments')
+    plt.plot(y_mean[36:72], G_mean[36:72], '^', markersize=12, color = "#1f78b4", alpha=1.0, label='Second moments')
+    plt.plot(y_mean[72:108], G_mean[72:108], 'v', markersize=12, color = "#b2df8a", alpha=1.0, label='Third moments')
+    plt.plot(y_mean[108:144], G_mean[108:144], '*', markersize=11, color = "#33a02c", alpha=1.0, label='Fourth moments')
+    plt.plot(y_mean[144:], G_mean[144:], '+', markersize=12, color = "#fb9a99", alpha=1.0, label='Autocorrelation')
     plt.xlim((x_min,x_max))
     plt.ylim((x_min,x_max))
     plt.xlabel('Prediction')
