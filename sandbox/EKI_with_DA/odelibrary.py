@@ -234,6 +234,7 @@ class L63:
 
   def __init__(_s,
       driver = None,
+      keep_bounded = True,
       a = 10, b = 28, c = 8/3, **kwargs):
     '''
     Initialize an instance: setting parameters and xkstar
@@ -241,7 +242,7 @@ class L63:
     _s.a = a
     _s.b = b
     _s.c = c
-
+    _s.keep_bounded = keep_bounded
     _s.state_names = ['x','y','z']
 
 
@@ -273,6 +274,10 @@ class L63:
     a = _s.a
     b = _s.b
     c = _s.c
+    if _s.keep_bounded:
+      # print('keeping bounded')
+      S[np.abs(S) > 200] = 200
+
     x = S[0]
     y = S[1]
     z = S[2]

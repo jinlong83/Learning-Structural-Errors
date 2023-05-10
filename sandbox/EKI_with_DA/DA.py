@@ -56,57 +56,26 @@ class WRAPPER(object):
 		sol = my_solve_ivp(ic, f_rhs, t_eval, t_span, self.integrator_settings)
 		return sol
 
-	def G(self, obs_warmup, true_warmup, times_warmup, times_rollout, params, param_names, fig_path='G_run', make_plots=True):
+	def G(self, obs, true, times, params, param_names, fig_path='G_run', make_plots=True):
 
-		# split data into warmup and rollout
-		# data_warmup = traj[:t_da]
-		# data_rollout = traj[t_da:]
-		# times_warmup = traj_times[:t_da]
-		# times_rollout = traj_times[(t_da-1):] # start the rollout so that its IC is the final filtered state from the warmup.
-		# obs_warmup = traj_obs[:t_da]
-		# obs_rollout = traj_obs[t_da:]
+		# reset output directory
+		if make_plots:
+			self.DA.output_dir = fig_path
+			os.makedirs(self.DA.output_dir, exist_ok=True)
 
 		# set parameters of the ODE
 		for i, name in enumerate(param_names):
 			setattr(self.DA.ode, name, params[i])
 
-		self.DA.set_Psi() # redefine forward-integrator using updated ODE parameters
-
 		# get initial condition
-		self.DA.times = times_warmup
-		self.DA.x_true = true_warmup
-		self.DA.y_obs = obs_warmup
-		self.DA.N = len(times_warmup)
+		self.DA.times = times
+		self.DA.x_true = true
+		self.DA.y_obs = obs
+		self.DA.N = len(times)
 		self.DA.test_filter(make_plots=make_plots)
 
-		# make predictions on the heldout data
-		ic = self.DA.x_assim_final[-1]
-		f_rhs = lambda t, y: self.DA.ode.rhs(y,t)
-		t_eval = times_rollout
-		t_span = [times_rollout[0], times_rollout[-1]]
-		pred_rollout = my_solve_ivp(ic, f_rhs, t_eval, t_span, self.integrator_settings)
-
-		if make_plots:
-			plot_G(fig_path, self.DA.H,
-				true_warmup, times_warmup,
-				obs_warmup, times_warmup,
-				self.DA.x_assim_final, self.DA.times,
-				pred_rollout, times_rollout,
-				burnin=0)
-
-		#ignore the first state, because it is the IC which is actually the
-		#final filtered state from the warmup
-		# return pred_rollout[1:], data_rollout
-		return (self.DA.H @ pred_rollout.T).T
-
-
-def get_Psi(dt, rhs, integrator, t0=0):
-	t_span = [t0, t0+dt]
-	t_eval = np.array([t0+dt])
-	settings = {}
-	settings['dt'] = dt
-	settings['method'] = integrator
-	return lambda ic0: my_solve_ivp(ic=ic0, f_rhs=lambda t, y: rhs(y, t), t_eval=t_eval, t_span=t_span, settings=settings)
+		# return 1-step ahead prediction
+		return self.DA.y_pred
 
 def generate_data(dt, t_eval, ode, t0=0):
 	ic = ode.get_inits()
@@ -138,15 +107,6 @@ class VAR3D(object):
 		self.obs_noise_sd = obs_noise_sd
 		self.lr = lr
 
-		# set up dynamics
-		# self.integrator = integrator
-		# self.ODE = locate('odelibrary.{}'.format(dynamics_rhs))
-		# self.ode = self.ODE(driver=driver)
-		# self.set_Psi()
-
-		# set up true data
-		# self.reset_data()
-
 		# set up observation data
 		dim_y, dim_x = self.H.shape
 		self.dim_y = dim_y
@@ -164,11 +124,13 @@ class VAR3D(object):
 			K = eta * self.H.T #np.zeros((dim_x, dim_y)) # linear gain
 		self.K = K
 
-	def set_Psi(self):
-		self.Psi = get_Psi(dt=self.dt, rhs=self.ode.rhs, integrator=self.integrator)
 
-	def predict(self, ic):
-		return self.Psi(ic)
+	def predict(self, ic, t0):
+		t_span = [t0, t0+self.dt]
+		t_eval = np.array([t0+self.dt])
+		settings = {'dt': self.dt, 'method': self.integrator}
+		foo = my_solve_ivp(ic=ic, f_rhs=lambda t, y: self.ode.rhs(y, t), t_eval=t_eval, t_span=t_span, settings=settings)
+		return foo
 
 	def update(self, x_pred, y_obs):
 		return (self.Ix - self.K @ self.H) @ x_pred + (self.K @ y_obs)
@@ -177,7 +139,6 @@ class VAR3D(object):
 		# set up DA arrays
 		self.x_pred = np.zeros_like(self.x_true)
 		self.y_pred = np.zeros_like(self.y_obs)
-		self.y_pred_err = np.zeros(self.y_obs.shape[0])
 		self.x_assim = np.zeros_like(self.x_true)
 
 		# choose ic for DA
@@ -190,16 +151,16 @@ class VAR3D(object):
 		# DA @ c=0, t=0 has been initialized already
 		for c in range(1, self.N):
 			# predict
-			self.t_pred += self.dt
-			self.x_pred[c] = self.predict(ic=self.x_assim[c-1])
+			self.x_pred[c] = self.predict(ic=self.x_assim[c-1], t0=self.t_pred)
 			self.y_pred[c] = self.H @ self.x_pred[c]
+			self.t_pred += self.dt
 
 			# assimilate
 			self.t_assim += self.dt
 			self.x_assim[c] = self.update(x_pred=self.x_pred[c], y_obs=self.y_obs[c])
 
 		# compute evaluation statistics on assimilation
-		self.eval_dic_truth = computeErrors(target=self.x_true, prediction=self.x_assim, dt=self.dt, thresh=self.obs_noise_sd)
+		self.eval_dict_truth = computeErrors(target=self.x_true, prediction=self.x_assim, dt=self.dt, thresh=self.obs_noise_sd)
 
 		# compute evaluation statistics on prediction
 		self.eval_dict_obs = computeErrors(target=self.y_obs, prediction=self.y_pred, dt=self.dt, thresh=self.obs_noise_sd)
@@ -253,19 +214,6 @@ class ENKF(object):
 		self.s_perturb_obs = s_perturb_obs
 		self.add_state_noise = add_state_noise
 
-
-		# set up dynamics
-		# self.integrator = integrator
-		# self.ODE = locate('odelibrary.{}'.format(dynamics_rhs))
-		# self.ode = self.ODE(driver=driver)
-		# self.set_Psi()
-
-		# set up true data
-		# self.reset_data()
-
-		# set burnin
-		# self.N_burnin = int(0.8*self.N)
-
 		# set up observation data
 		dim_y, dim_x = self.H.shape
 		self.dim_y = dim_y
@@ -285,11 +233,12 @@ class ENKF(object):
 		self.x_ic_sd = x_ic_sd
 		self.x_ic_cov = x_ic_cov
 
-	def set_Psi(self):
-		self.Psi = get_Psi(dt=self.dt, rhs=self.ode.rhs, integrator=self.integrator)
-
-	def predict(self, ic):
-		return self.Psi(ic)
+	def predict(self, ic, t0):
+		t_span = [t0, t0+self.dt]
+		t_eval = np.array([t0+self.dt])
+		settings = {'dt': self.dt, 'method': self.integrator}
+		foo = my_solve_ivp(ic=ic, f_rhs=lambda t, y: self.ode.rhs(y, t), t_eval=t_eval, t_span=t_span, settings=settings)
+		return foo
 
 	def update(self, x_pred, y_obs):
 		return (self.Ix - self.K @ self.H) @ x_pred + (self.K @ y_obs)
@@ -305,6 +254,7 @@ class ENKF(object):
 		# particles
 		self.x_pred_particles = np.zeros( (self.N, self.N_particles, self.dim_x) )
 		self.y_pred_particles = np.zeros( (self.N, self.N_particles, self.dim_y) )
+		self.y_pred_particles_noiseFree = np.zeros( (self.N, self.N_particles, self.dim_y) )
 		self.x_assim_particles = np.zeros( (self.N, self.N_particles, self.dim_x) )
 
 		#  error-collection arrays
@@ -328,24 +278,31 @@ class ENKF(object):
 		if self.x_ic_mean is None:
 			self.x_ic_mean = np.zeros(self.dim_x)
 
-		x0 = np.random.multivariate_normal(mean=self.x_ic_mean, cov=self.x_ic_cov, size=self.N_particles)
+		# generate initial ensemble using self.ode.get_inits()
+		# x0 = np.random.multivariate_normal(mean=self.x_ic_mean, cov=self.x_ic_cov, size=self.N_particles)
+		x0 = np.array([self.ode.get_inits() for _ in range(self.N_particles)])
+
 		self.x_assim_particles[0] = np.copy(x0)
 		self.x_pred_particles[0] = np.copy(x0)
+		self.x_assim_mean[0] = np.mean(self.x_assim_particles[0], axis=0)
+		self.x_pred_mean[0] = np.mean(self.x_pred_particles[0], axis=0)
 
 		self.x_pred_mean[0] = np.mean(x0, axis=0)
 		self.y_pred_mean[0] = self.H @ self.x_pred_mean[0]
 
-
 		# DA @ c=0, t=0 has been initialized already
 		for c in range(1, self.N):
-			## predict
-			self.t_pred += self.dt
 			# compute and store ensemble forecasts
 			for n in range(self.N_particles):
-				self.x_pred_particles[c,n] = self.predict(ic=self.x_assim_particles[c-1,n])
+				self.x_pred_particles[c,n] = self.predict(ic=self.x_assim_particles[c-1,n], t0=self.t_pred)
+				self.y_pred_particles_noiseFree[c,n] = self.H @ self.x_pred_particles[c,n]
 				if self.add_state_noise:
 					self.x_pred_particles[c,n] += np.random.multivariate_normal(mean=self.state_noise_mean, cov=self.Sigma, size=1).squeeze()
 				self.y_pred_particles[c,n] = self.H @ self.x_pred_particles[c,n]
+
+			## predict
+			self.t_pred += self.dt
+
 			# compute and store ensemble means
 			self.x_pred_mean[c] = np.mean(self.x_pred_particles[c], axis=0)
 			self.y_pred_mean[c] = self.H @ self.x_pred_mean[c]
@@ -385,7 +342,7 @@ class ENKF(object):
 			# track assimilation errors for post-analysis
 			self.x_assim_error_mean[c] = self.x_true[c] - self.x_assim_mean[c]
 
-		# compute evaluation statistics
+			# compute evaluation statistics
 		self.eval_dict = computeErrors(target=self.x_true, prediction=self.x_assim_mean, dt=self.dt, thresh=self.obs_noise_sd)
 
 		# plot assimilation errors
@@ -405,4 +362,6 @@ class ENKF(object):
 			fig_path = os.path.join(self.output_dir, 'K_runningMean')
 			plot_K_learning(times=self.times, K_vec=self.K_vec_runningmean, fig_path=fig_path)
 
+		# reassign means to universal variable names
 		self.x_assim_final = self.x_assim_mean
+		self.y_pred = np.mean(self.y_pred_particles_noiseFree, axis=1)

@@ -173,6 +173,7 @@ def plot_assimilation_residual_statistics(res, fig_path):
         for j in range(n_vars): # col
             ax[i,j].set_yscale('symlog')
     plt.savefig(fig_path + '_ylog' + '.pdf', format='pdf')
+    plt.close()
 
 def plot_loss(times, loss, fig_path):
     # plot sequence
@@ -184,6 +185,7 @@ def plot_loss(times, loss, fig_path):
     plt.savefig(fig_path + '.pdf', format='pdf')
     ax.set_yscale('log')
     plt.savefig(fig_path + '_ylog' + '.pdf', format='pdf')
+    plt.close()
 
 def plot_K_learning(times, K_vec, fig_path):
     # plot sequence
@@ -196,6 +198,7 @@ def plot_K_learning(times, K_vec, fig_path):
     ax.set_xlabel('time')
     ax.legend()
     plt.savefig(fig_path + '.pdf', format='pdf')
+    plt.close()
 
 def plot_assimilation_errors(times, errors, eps, fig_path):
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12,6))
@@ -208,3 +211,4 @@ def plot_assimilation_errors(times, errors, eps, fig_path):
     ax.set_ylabel('MSE')
     ax.set_xlabel('time')
     plt.savefig(fig_path + '.pdf', format='pdf')
+    plt.close()

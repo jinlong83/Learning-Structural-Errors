@@ -78,14 +78,14 @@ class EXPERIMENT(object):
         obs = states.flatten()  
         return obs
 
-    def G_da(self, params_all, obs_warmup, true_warmup, times_warmup, 
-             times_rollout, fig_path='.'):
+    def G_da(self, params_all, obs, true, times, fig_path='.'):
         # return solution in observed components
-        pred_rollout = self.WRAP.G(obs_warmup, true_warmup, times_warmup, times_rollout,
+        pred_rollout = self.WRAP.G(obs, true, times,
                             params=params_all, param_names=self.param_names, 
-                            fig_path=fig_path, make_plots=False)
+                            fig_path=fig_path, make_plots=True)
         # normalize, then flatten
-        return self.H(self.normalizer.encode(pred_rollout))
+        # use self.t_da to discard predictions made during transient assimilation phase
+        return self.H(self.normalizer.encode(pred_rollout[self.t_da:]))
 
     def G_joint(self, params_all, times):
         n_params = len(self.param_names)
@@ -101,24 +101,21 @@ class EXPERIMENT(object):
 
         return self.H(self.normalizer.encode((self.da_settings['H']@states.T).T))
 
-    def G(self, params_all, obs_warmup, true_warmup, times_warmup,
-           times_rollout, fig_path='.'):
+    def G(self, params_all, obs, true, times, fig_path='.'):
         if self.use_da:
-            return self.G_da(params_all, obs_warmup, true_warmup, 
-                             times_warmup, times_rollout, fig_path)
+            return self.G_da(params_all, obs, true, times, fig_path)
         else:
-            times = np.hstack((times_warmup, times_rollout))
             return self.G_joint(params_all, times)
 
-    def ensembleG(self, ui, obs_warmup, true_warmup, times_warmup,
-                   times_rollout, n_measurements=600):
+    def ensembleG(self, ui, obs, true, times, fig_path='.', n_measurements=600):
         Gmatrix = np.zeros([ui.shape[0],n_measurements])
         if self.parallel_flag == True:
             pool = multiprocessing.Pool(multiprocessing.cpu_count())
             results = []
             for iterN in range(ui.shape[0]):
-                results.append(pool.apply_async(self.G, (ui[iterN,:], 
-                        obs_warmup, true_warmup, times_warmup, times_rollout)))
+                iterPath = os.path.join(fig_path, 'ensembleG_particle'+str(iterN))
+                results.append(pool.apply_async(
+                    self.G, (ui[iterN, :], obs, true, times, iterPath)))
             iterN = 0
             for result in results:
                 Gmatrix[iterN,:] = result.get()
@@ -126,8 +123,8 @@ class EXPERIMENT(object):
             pool.close()
         else:
             for iterN in range(ui.shape[0]):
-                Gmatrix[iterN,:] = self.G(ui[iterN,:], 
-                        obs_warmup, true_warmup, times_warmup, times_rollout)
+                iterPath = os.path.join(fig_path, 'ensembleG_particle'+str(iterN))
+                Gmatrix[iterN,:] = self.G(ui[iterN,:], obs, true, times, iterPath)
         return Gmatrix
 
     def run(self):
@@ -137,6 +134,8 @@ class EXPERIMENT(object):
 
         # extract true parameters from model
         true_params = [getattr(self.WRAP.DA.ode, param_name) for param_name in self.param_names]
+        n_params = len(self.param_names)
+        n_states = self.WRAP.DA.dim_x
 
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
@@ -151,31 +150,24 @@ class EXPERIMENT(object):
         
         self.normalizer = self.normalizer(traj_obs)
 
-        # split data into warmup and rollout phases (for DA + EKI)
-        times_warmup, obs_warmup, true_warmup, times_rollout, obs_rollout, true_rollout = self.splitData(traj_times, traj, traj_obs)
+        y_mean = self.H(self.normalizer.encode(traj_obs[self.t_da:]))
+        self.plotData(self.normalizer.encode(traj_obs))
 
-        if self.use_da:
-            # use DA to infer ICs
-            y_mean = self.H(self.normalizer.encode(obs_rollout))
-            self.plotData(self.normalizer.encode(obs_rollout))
-        else:
-            # use EKI to infer ICs
-            y_mean = self.H(self.normalizer.encode(traj_obs))
-            self.plotData(self.normalizer.encode(traj_obs))
-
-        ## Clip the minimum std to 0.1
-        y_cov = np.diag(np.clip((y_mean * 0.05)**2, 0.01, None))
+        # y_cov = np.diag(np.clip((y_mean * 0.05)**2, 0.01, None)) ## Clip the minimum std to 0.1
+        y_cov = self.WRAP.DA.obs_noise_sd**2 * np.eye(len(y_mean))
 
         # PARAMS
         if self.use_da:
-            params_samples = np.zeros([self.nSamples,3])
+            params_samples = np.zeros([self.nSamples,n_params])
         else:
-            params_samples = np.zeros([self.nSamples,6])
+            params_samples = np.zeros([self.nSamples,n_params+n_states])
             # STATES
-            params_samples[:,3:] = np.array([self.WRAP.DA.ode.get_inits() for _ in range(self.nSamples)])
+            params_samples[:, n_params:] = np.array(
+                [self.WRAP.DA.ode.get_inits() for _ in range(self.nSamples)])
 
         # PARAMS
-        params_samples[:,:3] = np.array([self.WRAP.DA.ode.sample_params(param_names=self.param_names) for _ in range(self.nSamples)])
+        params_samples[:, :n_params] = np.array([self.WRAP.DA.ode.sample_params(
+            param_names=self.param_names) for _ in range(self.nSamples)])
 
         print("Number of cpu : ", multiprocessing.cpu_count())
 
@@ -188,9 +180,10 @@ class EXPERIMENT(object):
         ## Iterations of EKI steps
         for iterN in tqdm(range(self.DAsteps)):
             print('DA step: ', iterN+1)
+            fig_path = os.path.join(self.output_dir, 'figs/EKI_iter'+str(iterN))
             ## Forward simulation of ensemble members
-            G_results = self.ensembleG(eki.u[iterN], obs_warmup, true_warmup,
-                                        times_warmup, times_rollout, n_measurements=len(y_mean)) # nSamples x nData
+            G_results = self.ensembleG(eki.u[iterN], traj_obs, traj,
+                                        traj_times, fig_path, n_measurements=len(y_mean)) # nSamples x nData
 
             ## Feed the ensemble evaluaation of G to EKI object
             eki.EnKI(G_results)
@@ -200,7 +193,7 @@ class EXPERIMENT(object):
             pickle.dump(eki.g, open(os.path.join(self.output_dir, "g.pkl"), "wb"))
             pickle.dump(eki.error, open(os.path.join(self.output_dir, "error.pkl"), "wb"))
             end = time()
-            print('Time elapsed: ', end - start)
+            print('Time elapsed: ', (end - start)/60, ' minutes')
 
             # make plots
             if self.use_da:
