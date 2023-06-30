@@ -121,7 +121,7 @@ def plot_G(fig_path, H,
     return
 
 
-def plot_assimilation_traj(times, obs, true, assim, fig_path, H, burnin=100, names=None):
+def plot_assimilation_traj(times, obs, true, assim, pred, fig_path, H, burnin=100, names=None):
     # plt.rcParams.update({'font.size': 64, 'legend.fontsize': 48,
     #                 'legend.facecolor': 'white', 'legend.framealpha': 0.8,
     #                 'legend.loc': 'upper left', 'lines.linewidth': 4.0})
@@ -137,7 +137,10 @@ def plot_assimilation_traj(times, obs, true, assim, fig_path, H, burnin=100, nam
         if j in obs_ind_list:
             j_obs += 1
             ax.scatter(times[burnin:], obs[burnin:,j_obs], marker='x', s=50, label='Observed', color='red')
-        ax.plot(times[burnin:], assim[burnin:,j], label='Estimated', color='cyan', linewidth=1)
+        if pred is not None:
+            ax.scatter(times[burnin:], pred[burnin:,j], marker='o', s=50, label='Predicted', color='blue')
+
+        ax.plot(times[burnin:], assim[burnin:,j], label='Filtered', color='cyan', linewidth=1)
         if names is not None:
             ax.set_ylabel(r'${}$'.format(names[j]))
         ax.legend(loc='right')

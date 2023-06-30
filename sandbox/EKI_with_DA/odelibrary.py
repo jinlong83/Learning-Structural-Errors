@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from scipy.integrate import solve_ivp
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, WhiteKernel, ConstantKernel
@@ -37,10 +38,92 @@ def my_solve_ivp(ic, f_rhs, t_eval, t_span, settings):
             u_sol[i] = u0
     else:
         # get settings not including 'dt' key
-        settings = {k: v for k, v in settings.items() if k != 'dt'}
+        settings = {k: v for k, v in settings.items() if k not in ['dt', 'atol', 'rtol']}
+        settings = {}
         sol = solve_ivp(fun=lambda t, y: f_rhs(t, y), t_span=t_span, y0=u0, t_eval=t_eval, **settings)
         u_sol = sol.y.T
     return np.squeeze(u_sol)
+
+## NN functions
+def create_nn(nn_dims, rescale_input=True, rescale_output=True):
+
+    modules = []
+    nn_num_layers = len(nn_dims) - 1
+    if rescale_input:
+      modules.append(RescaleLayer(nn_dims[0]))
+      modules.append(torch.nn.Identity()) # need this because parameter fetcher uses every-other layer
+
+    for idx in range(nn_num_layers):
+        modules.append(torch.nn.Linear(nn_dims[idx], nn_dims[idx+1]))
+        if idx < nn_num_layers - 1:
+            modules.append(torch.nn.ReLU())
+    
+    if rescale_output:
+      modules.append(torch.nn.Identity()) # need this because parameter fetcher uses every-other layer
+      modules.append(RescaleLayer(nn_dims[-1]))
+
+    net = torch.nn.Sequential(*modules)
+    return net
+
+# def my_nn(x, params, net): #, nn_num_layers):
+def my_nn(params, net): #, nn_num_layers):
+    '''This function first updates the network with specified parameters,
+    then evaluates the network at the given input x'''
+    nn_num_layers = int(np.ceil(len(net)/2))
+    # print(int(np.ceil(len(net)/2))==nn_num_layers)
+    # print(nn_num_layers)
+    ## Error model
+    params_start_idx = 0
+    params_end_idx = 0
+    for idx in range(nn_num_layers):
+        layer_idx = int(idx*2) 
+        ## Set i-th layer weights
+        weight = net[layer_idx].weight
+        params_num = weight.flatten().shape[0]
+        params_end_idx += params_num
+        net[layer_idx].weight = torch.nn.parameter.Parameter(torch.tensor(
+                                params[params_start_idx:params_end_idx].reshape(weight.shape), 
+                                dtype=torch.float32)) 
+        params_start_idx = params_end_idx
+        ## Set i-th layer bias 
+        bias = net[layer_idx].bias 
+        params_num = bias.flatten().shape[0]
+        params_end_idx += params_num
+        net[layer_idx].bias = torch.nn.parameter.Parameter(torch.tensor(
+                              params[params_start_idx:params_end_idx].reshape(bias.shape),
+                              dtype=torch.float32))
+        params_start_idx = params_end_idx
+
+        ##REMOVE ME: SET TO TRUTH MANUALLY
+        # net[layer_idx].bias = torch.nn.Parameter(torch.tensor([0.0]))
+        # net[layer_idx].weight = torch.nn.Parameter(torch.tensor([0, -0.01, 0], dtype=torch.float32).reshape(weight.shape))
+
+    return net #(torch.tensor(x, dtype=torch.float32)).detach().numpy().flatten()
+
+class RescaleLayer(torch.nn.Module):
+    """ Custom normalization layer """
+    # based on https://auro-227.medium.com/writing-a-custom-layer-in-pytorch-14ab6ac94b77
+
+    def __init__(self, size_in):
+        super().__init__()
+        self.size_in = size_in
+        weight = torch.Tensor(size_in)
+        bias = torch.Tensor(size_in)
+        self.weight = torch.nn.Parameter(weight)
+        self.bias = torch.nn.Parameter(bias)
+
+        # initialize weights and biases
+        bound = 4 # log10
+        torch.nn.init.uniform_(self.weight,  -bound, bound)  # weight init
+        torch.nn.init.uniform_(self.bias, -bound, bound)  # bias init
+
+    def forward(self, x):
+        w_times_x = torch.mul(x, 10**self.weight.t())
+        return torch.add(w_times_x, 10**self.bias)  # 10^w times x + 10^b
+
+
+## ODE functions
+
 
 class UltradianGlucoseModel(object):
   """
@@ -50,26 +133,38 @@ class UltradianGlucoseModel(object):
 
   """
 
-  def __init__(_s, eps=1e-5, constrain_positive=True, no_h=True, driver=np.zeros((0,2))):
+  def __init__(_s, eps=1e-5, constrain_positive=False, no_h=True,
+               keep_bounded=False,
+               driver=np.zeros((0,2)), nn_dims=[3,1], nn_params=None,
+               nn_rescale_input=False, nn_rescale_output=False,
+               exptype='double',
+               k_decay=0.5, a_decay=0.5, b_decay=10,
+               Um=94, U0=4, Rm=209, Rg=180, ti=100, tp=6):
     '''
     Initialize an instance: setting parameters and xkstar
     '''
      # set state to eps if it goes negative (non-physical).
     _s.eps = eps
     _s.constrain_positive = constrain_positive
+    _s.keep_bounded = keep_bounded
+
+    # NN rescaling settings
+    _s.nn_rescale_input = nn_rescale_input
+    _s.nn_rescale_output = nn_rescale_output
 
     # remove last 3 states if no_h
     _s.no_h = no_h
 
+    _s.exptype = 'single' #exptype # 'single' or 'double' exponential meal function
     _s.Meals = driver # Time, carbs (mg)
     _s.Vp = 3 #'Vp' [l]
     _s.Vi = 11 #'Vi' [l]
     _s.Vg = 10 #'Vg' [l]
     _s.E = 0.2 #'E' [l min^-1]
-    _s.tp = 6 #'tp' [min]
-    _s.ti = 100 #'ti' [min]
+    _s.tp = tp #6 #'tp' [min]
+    _s.ti = ti #100 #'ti' [min]
     _s.td = 12 #'td' [min]
-    _s.Rm = 209 #'Rm' [mU min^-1]
+    _s.Rm = Rm #209 #'Rm' [mU min^-1]
     _s.a1 = 6.67 #'a1' []
     _s.C1 = 300 #'C1' [mg l^-1]
     _s.C2 = 144 #'C2' [mg l^-1]
@@ -77,12 +172,14 @@ class UltradianGlucoseModel(object):
     _s.C4 = 80 #'C4' [mU l^-1]
     _s.C5 = 26 #'C5' [mU l^-1]
     _s.Ub = 72 #'Ub' [mg min^-1]
-    _s.U0 = 4 #'U0' [mg min^-1]
-    _s.Um = 94 #'Um' [mg min^-1]
-    _s.Rg = 180 #'Rg' [mg min^-1]
+    _s.U0 = U0 #4 #'U0' [mg min^-1]
+    _s.Um = Um #94 #'Um' [mg min^-1]
+    _s.Rg = Rg #180 #'Rg' [mg min^-1]
     _s.alpha = 7.5 #'alpha' []
     _s.beta = 1.77 #'beta' []
-    _s.k_decay = 0.5 #'k_decay' []
+    _s.k_decay = k_decay #0.5 #'k_decay' []
+    _s.a_decay = a_decay #0.5 #'k_decay' []
+    _s.b_decay = b_decay #10 #'k_decay' []
     _s.kappa = (1/_s.Vi + 1/(_s.E*_s.ti))/_s.C4
 
     pmolperLpermU = 6.945 #conversion factor for insulin units (needed only when using Sturis)
@@ -99,6 +196,24 @@ class UltradianGlucoseModel(object):
     _s.h3min, _s.h3max = (10, 300) # (60, 80)
 
     _s.state_names = _s.get_state_names()
+
+    # set neural net
+    _s.nn_params = nn_params
+    _s.nn_dims = nn_dims # dimensions of each layer of the neural net
+    # _s.nn_num_layers = len(_s.nn_dims) - 1 + _s.nn_rescale_input + _s.nn_rescale_output
+    print(_s.nn_dims, _s.nn_rescale_input, _s.nn_rescale_output)
+    _s.net = create_nn(_s.nn_dims, rescale_input=_s.nn_rescale_input, rescale_output=_s.nn_rescale_output)
+    _s.nn_num_params = sum(p.numel() for p in _s.net.parameters() if p.requires_grad)
+
+  def set_nn(_s, nn_params):
+    _s.my_nn = my_nn(nn_params, _s.net)
+
+  def nn_eval(_s, x):
+    with torch.no_grad():
+    #   foo = my_nn(x, _s.nn_params, _s.net) #, _s.nn_num_layers)
+        foo = _s.my_nn(torch.tensor(x, dtype=torch.float32)
+                     ).detach().numpy().flatten()
+    return foo
 
   def get_state_names(_s):
     if _s.no_h:
@@ -118,6 +233,8 @@ class UltradianGlucoseModel(object):
     if _s.no_h:
       state_inits = state_inits[:-3]
 
+    print('WARNING: using true state inits')
+    state_inits = np.array([50, 50, 10000])
     return state_inits
 
   def sample_params(_s, param_names):
@@ -136,6 +253,9 @@ class UltradianGlucoseModel(object):
       return _s.Ub*(1 - np.exp(-G/(_s.Vg*_s.C2)))
 
   def F3(_s, Ii):
+    # if Ii < 0:
+      # print('WARNING: Ii < 0')
+      # Ii = 1e-6
     return ( _s.U0 + (_s.Um - _s.U0) / ( 1 + (_s.kappa*Ii)**(-_s.beta) ) ) / (_s.Vg* _s.C3)
 
   def F4(_s, h3):
@@ -163,19 +283,39 @@ class UltradianGlucoseModel(object):
       for i in range(ind): #i=1:ind
         mstart = _s.Meals[i,0] # start time of ith meal
         #     I = Meals(i,3) # I constant for ith meal
-        delrate += _s.Meals[i,1]*np.exp(_s.k_decay*(mstart - t_now)/60) # add ith meal contribution to del
+        if _s.exptype=='single':
+          delrate += _s.Meals[i,1]*np.exp(_s.k_decay*(mstart - t_now)/60) # add ith meal contribution to del
+        elif _s.exptype=='double':
+          delrate += _s.Meals[i,1]*(np.exp(_s.a_decay*(mstart - t_now)/60) - np.exp(_s.b_decay*(mstart -  t_now)/60))
 
-    delrate = _s.k_decay * delrate / 60
+    if _s.exptype=='single':
+      delrate = _s.k_decay * delrate / 60
+    elif _s.exptype=='double':
+      delrate = _s.a_decay * _s.b_decay/(_s.b_decay-_s.a_decay) * delrate / 60
 
     return delrate
 
   def rhs(_s, S, t):
+    # print(np.log10(S))
     ## Sturis Ultradian Glucose Model from Keener Physiology Textbook
+
+    # this is the essential step for preventing the model from stalling
+    S = np.clip(S, a_min=[1e-5,1e-5,1e-5], a_max=[1e4, 1e4, 1e6])
+    # mostly, this protects against negative values of Ii, which can cause F3 to blow up
 
     ## Read in variables
     # force states to be positive
-    if _s.constrain_positive:
-      S[S < 0] = _s.eps
+    # if _s.constrain_positive:
+    #   print('Constraining positive')
+    #   is_neg = S < 0
+    #   S[is_neg] = _s.eps
+
+    # if _s.keep_bounded:
+    #   print('bounding')
+    #   bounds = [500, 500, 1e5]
+    #   for idx in range(len(bounds)):
+    #     if S[idx] > bounds[idx]:
+    #       S[idx] = bounds[idx]
 
     if _s.no_h:
       Ip, Ii, G = S
@@ -194,6 +334,8 @@ class UltradianGlucoseModel(object):
     #plasma insulin mU
     foo_rhs[0] = _s.F1(G) - (Ip/_s.Vp - Ii/_s.Vi) * \
       _s.E - Ip/_s.tp  # dx/dt (mU/min)
+    # print('tp=',_s.tp)
+    # print('Ip/tp =', Ip/_s.tp)
 
     #insterstitial insulin mU
     foo_rhs[1] = (Ip/_s.Vp - Ii/_s.Vi)*_s.E - Ii/_s.ti  # foo_rhs/dt (mU/min)
@@ -208,6 +350,34 @@ class UltradianGlucoseModel(object):
       foo_rhs[3] = (Ip-h1)/_s.td
       foo_rhs[4] = (h1-h2)/_s.td
       foo_rhs[5] = (h2-h3)/_s.td
+
+    #  XXXXX add NN correction for insulin-dependent glucose absorption (Um=U0=0)
+    # add NN correction for missing -I_p / t_p term in I_p equation (t_p=np.inf)
+    if _s.nn_params is not None:
+      # foo_rhs[1] -= np.abs(_s.nn_eval(S))
+      # foo_rhs[0] += _s.nn_eval(S) 
+      Smod = np.copy(S)
+      Smod[2] /= 100
+      Smod /= 10
+      foo_rhs[0] += np.clip(_s.nn_eval(Smod), -100/6, 0)
+      # foo_rhs[0] += _s.nn_eval(S)
+      # foo_rhs[1] += np.clip(_s.nn_eval(S), -np.Inf, 0)
+      # foo_rhs[1] += _s.nn_eval(S)
+      # print(_s.nn_eval(S))
+      # bp()
+
+    # if _s.constrain_positive:
+    #   foo_rhs[is_neg] = np.abs(foo_rhs[is_neg])
+
+    # clip foo_rhs to prevent overflow
+    # if np.abs(foo_rhs[0]) > 250 or np.abs(foo_rhs[1]) > 250 or np.abs(foo_rhs[2]) > 5000:
+    #   print(foo_rhs)
+
+    # foo_rhs = np.clip(foo_rhs, a_min=1e-5*np.ones_like(foo_rhs), a_max=np.array([10,10,5000]))
+
+    # print(foo_rhs)
+    # print(t)
+    # foo_rhs
 
     return foo_rhs
 
@@ -235,7 +405,11 @@ class L63:
   def __init__(_s,
       driver = None,
       keep_bounded = True,
-      a = 10, b = 28, c = 8/3, **kwargs):
+      a = 10, b = 28, c = 8/3,
+      remove_y = False,
+      nn_rescale_input = False, nn_rescale_output = False,
+      nn_dims=[3,5,1], nn_params=None, 
+      **kwargs):
     '''
     Initialize an instance: setting parameters and xkstar
     '''
@@ -245,11 +419,35 @@ class L63:
     _s.keep_bounded = keep_bounded
     _s.state_names = ['x','y','z']
 
+    # create model error
+    _s.remove_y = remove_y
+
+    # NN rescaling settings
+    _s.nn_rescale_input = nn_rescale_input
+    _s.nn_rescale_output = nn_rescale_output
+
+    # set neural net
+    _s.nn_params = nn_params
+    _s.nn_dims = nn_dims # dimensions of each layer of the neural net
+    # _s.nn_num_layers = len(_s.nn_dims) - 1 + _s.nn_rescale_input + _s.nn_rescale_output
+    _s.net = create_nn(
+        _s.nn_dims, rescale_input=_s.nn_rescale_input, rescale_output=_s.nn_rescale_output)
+    _s.nn_num_params = sum(p.numel() for p in _s.net.parameters() if p.requires_grad)
+
+  def set_nn(_s, nn_params):
+    _s.my_nn = my_nn(nn_params, _s.net)
+
+  def nn_eval(_s, x):
+    with torch.no_grad():
+    #   foo = my_nn(x, _s.nn_params, _s.net) #, _s.nn_num_layers)
+        foo = _s.my_nn(torch.tensor(x, dtype=torch.float32)
+                     ).detach().numpy().flatten()
+    return foo
 
   def get_inits(_s):
-    (xmin, xmax) = (-10,10)
-    (ymin, ymax) = (-20,30)
-    (zmin, zmax) = (10,40)
+    (xmin, xmax) = (-20,20)
+    (ymin, ymax) = (-30,30)
+    (zmin, zmax) = (5,45)
 
     xrand = xmin+(xmax-xmin)*np.random.random()
     yrand = ymin+(ymax-ymin)*np.random.random()
@@ -283,8 +481,20 @@ class L63:
     z = S[2]
 
     foo_rhs = np.empty(3)
+
+    # X-component
     foo_rhs[0] = -a*x + a*y
-    foo_rhs[1] = b*x - y - x*z
+
+    # Y-component
+    if _s.remove_y:
+      foo_rhs[1] = b*x - x*z
+    else:
+      foo_rhs[1] = b*x - y - x*z
+
+    if _s.nn_params is not None:
+      foo_rhs[1] += _s.nn_eval(S)
+
+    # Z-component
     foo_rhs[2] = -c*z + x*y
 
     return foo_rhs

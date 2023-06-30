@@ -17,6 +17,7 @@ class WRAPPER(object):
 				dynamics_rhs=None,
 				driver=None,
 				da_settings={},
+				ode_settings={},
 				**kwargs):
 
 		self.integrator_settings = {'dt': dt, 'method': integrator}
@@ -31,7 +32,7 @@ class WRAPPER(object):
 		## set up dynamics
 		self.DA.integrator = integrator
 		self.DA.ODE = locate('odelibrary.{}'.format(dynamics_rhs))
-		self.DA.ode = self.DA.ODE(driver=driver)
+		self.DA.ode = self.DA.ODE(driver=driver, **ode_settings)
 
 	def make_data(self, ic=None, t0=0, t_end=10000, step=5.0):
 
@@ -72,6 +73,8 @@ class WRAPPER(object):
 		self.DA.x_true = true
 		self.DA.y_obs = obs
 		self.DA.N = len(times)
+
+		# Run filter to generate 1-step-ahead predictions
 		self.DA.test_filter(make_plots=make_plots)
 
 		# return 1-step ahead prediction
@@ -149,7 +152,10 @@ class VAR3D(object):
 		self.y_pred[0] = self.H @ x_ic
 
 		# DA @ c=0, t=0 has been initialized already
+		self.t_pred = self.t0
+		self.t_assim = self.t0
 		for c in range(1, self.N):
+
 			# predict
 			self.x_pred[c] = self.predict(ic=self.x_assim[c-1], t0=self.t_pred)
 			self.y_pred[c] = self.H @ self.x_pred[c]
@@ -162,6 +168,10 @@ class VAR3D(object):
 		# compute evaluation statistics on assimilation
 		self.eval_dict_truth = computeErrors(target=self.x_true, prediction=self.x_assim, dt=self.dt, thresh=self.obs_noise_sd)
 
+		# compute evaluation statistics on UNOBSERVED
+		hidden_op = np.eye(self.dim_x) - self.H.T @ self.H
+		self.eval_dict_hidden = computeErrors(target=(hidden_op@self.x_true.T).T, prediction=(hidden_op@self.x_assim.T).T, dt=self.dt, thresh=self.obs_noise_sd)
+
 		# compute evaluation statistics on prediction
 		self.eval_dict_obs = computeErrors(target=self.y_obs, prediction=self.y_pred, dt=self.dt, thresh=self.obs_noise_sd)
 
@@ -170,13 +180,22 @@ class VAR3D(object):
 			fig_path = os.path.join(self.output_dir, 'assimilation_errors_all')
 			plot_assimilation_errors(times=self.times, errors=self.eval_dict_truth['mse'], eps=self.obs_noise_sd, fig_path=fig_path)
 
+			fig_path = os.path.join(self.output_dir, 'hidden_errors_all')
+			plot_assimilation_errors(times=self.times, errors=self.eval_dict_hidden['mse'], eps=self.obs_noise_sd, fig_path=fig_path)
+
 			fig_path = os.path.join(self.output_dir, 'observation_errors_all')
 			plot_assimilation_errors(times=self.times, errors=self.eval_dict_obs['mse'], eps=self.obs_noise_sd, fig_path=fig_path)
 
 			# plot true vs assimilated trajectories
-			for burnin in [0, 100]:
-				fig_path = os.path.join(self.output_dir, 'assimilation_traj_burnin{}'.format(burnin))
-				plot_assimilation_traj(times=self.times, obs=self.y_obs, true=self.x_true, assim=self.x_assim, fig_path=fig_path, H=self.H, burnin=burnin, names=self.ode.state_names)
+			for plot_pred in [0,1]:
+				if plot_pred:
+					pred = self.x_pred
+				else:
+					pred = None
+				for burnin in [0, 100]:
+					fig_path = os.path.join(self.output_dir, 'assimilation_traj_burnin{}_predplot{}'.format(burnin, plot_pred))
+					plot_assimilation_traj(times=self.times, obs=self.y_obs, true=self.x_true, assim=self.x_assim, pred=pred, fig_path=fig_path, H=self.H, burnin=burnin, names=self.ode.state_names)
+
 
 		self.x_assim_final = self.x_assim
 
@@ -351,9 +370,15 @@ class ENKF(object):
 			plot_assimilation_errors(times=self.times, errors=self.eval_dict['mse'], eps=self.obs_noise_sd, fig_path=fig_path)
 
 			# plot true vs assimilated trajectories
-			for burnin in [0, 100]:
-				fig_path = os.path.join(self.output_dir, 'assimilation_traj_burnin{}'.format(burnin))
-				plot_assimilation_traj(times=self.times, obs=self.y_obs, true=self.x_true, assim=self.x_assim_mean, fig_path=fig_path, H=self.H, burnin=burnin, names=self.ode.state_names)
+			for plot_pred in [0, 1]:
+				if plot_pred:
+					pred = self.x_pred_mean
+				else:
+					pred = None
+				for burnin in [0, 100]:
+					fig_path = os.path.join(
+						self.output_dir, 'assimilation_traj_burnin{}_predplot{}'.format(burnin, plot_pred))
+					plot_assimilation_traj(times=self.times, obs=self.y_obs, true=self.x_true, assim=self.x_assim_mean, pred=pred, fig_path=fig_path, H=self.H, burnin=burnin, names=self.ode.state_names)
 
 			# plot K convergence
 			fig_path = os.path.join(self.output_dir, 'K_sequence')
