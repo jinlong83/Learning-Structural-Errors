@@ -76,6 +76,16 @@ class EXPERIMENT(object):
         plt.savefig(os.path.join(self.output_dir, "data.pdf"))
         plt.close()
 
+        # plot each row of data on a separate subplot
+        try:
+            fig, axs = plt.subplots(data.shape[1], 1, sharex=True)
+            for i in range(data.shape[1]):
+                axs[i].plot(data[:,i])
+            plt.savefig(os.path.join(self.output_dir, "data_rows.pdf"))
+            plt.close()
+        except:
+            pass
+
     def H(self, states):
         """
         Observation function
