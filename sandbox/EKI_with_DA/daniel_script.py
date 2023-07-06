@@ -20,8 +20,9 @@ class FOO(object):
         x_ic_mean = np.array([55., 130., 130.00])
 
         state_noise_cov = np.diag((0.01*(x_ic_mean)) ** 2)
-        ODE_SETTINGS_APPROX = {'Vg': 0.1, 'tp': np.inf, 'nn_dims': [3, 5, 1]}
-        ODE_SETTINGS_TRUE = {'Vg': 0.1} # Vg=0.1 sets better scaling
+        # ODE_SETTINGS_APPROX = {'Vg': 0.1, 'tp': np.inf, 'nn_dims': [3, 5, 1]}
+        ODE_SETTINGS_APPROX = {'Vg': 0.1, 'nn_dims': [3, 5, 1]}
+        ODE_SETTINGS_TRUE = {'Vg': 0.1}  # Vg=0.1 sets better scaling
         DA_SETTINGS = {
             't0': T_RANGE[0],
             'H': HOBS,
@@ -115,15 +116,16 @@ class FOO(object):
         return error
     
 if __name__ == '__main__':
-    nSamples = 30  # choose number of ensemble members
+    ## choose number of ensemble members
+    nSamples = 30  
 
-    # set up data and experiment
+    ## set up data and experiment
     foo = FOO()
 
-    # read out the data
+    ## read out the data
     y_mean, y_cov = foo.make_data()
 
-    # set the "theta" for G
+    ## START setting the "theta" for G ##
     n_states = foo.experiment.WRAP.DA.dim_x
     n_params = foo.experiment.n_params
 
@@ -140,21 +142,24 @@ if __name__ == '__main__':
 
     # PARAMS drawn from uniform on -1 to 1
     params_samples[:, :n_params] = np.random.uniform(-1, 1, size=(nSamples, n_params))
+    ## END setting the "theta" for G ##
 
-    # run the forward model
+    ## run the forward model once
     G_results_single = foo.singleG(params_samples[0])
     print('Normalized Covariance-weighted Error: ', foo.computeError(G_results_single))
 
-    # run the forward model in parallel
+    ## run the forward model in parallel over ensemble members
     G_results_ens = foo.ensembleG(params_samples, parallel_flag=True)
     print('Normalized Covariance-weighted Error: ',
           foo.computeError(G_results_ens))
 
-    # plot the results from G_results_ens and y_mean
+    ## plot the results from G_results_ens and y_mean
     plt.plot(foo.traj_times, foo.y_mean, color='black')
+
     # loop over ensemble members
     for i in range(nSamples):
         plt.plot(foo.traj_times, G_results_ens[i], color='blue')
+
     # save the figure
     plt.savefig('data_vs_G.png')
 
