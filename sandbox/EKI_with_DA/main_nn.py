@@ -65,7 +65,7 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
         # ODE_SETTINGS_APPROX = {'Um': 0, 'U0': 0, 'nn_dims': [3, 25, 1]}
         ODE_SETTINGS_APPROX = {
                                 # 'Rg': 0,
-                            #    'tp': np.inf, 
+                            #   'tp': np.inf, 
                                'nn_dims': [3, 5, 1], 
                             #    'constrain_positive': False,
                             #    'nn_dims': [3, 1], 

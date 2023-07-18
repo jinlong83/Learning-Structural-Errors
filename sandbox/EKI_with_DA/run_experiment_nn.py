@@ -192,7 +192,9 @@ class EXPERIMENT(object):
 
         # PARAMS drawn from uniform on -1 to 1
         if self.param_type=='nn':
-            params_samples[:, :self.n_params] = np.random.uniform(-1, 1, size=(self.nSamples, self.n_params))
+            # params_samples[:, :self.n_params] = np.random.uniform(-1, 1, size=(self.nSamples, self.n_params))
+            params_samples[:, :self.n_params] = np.random.normal(0, np.sqrt(0.1), size=(self.nSamples, self.n_params))
+            
             # params_samples[:, 1:] *= 0.001
             # params_samples[:, 0] = -1/6 #0
             # params_samples[:, 1] = 0 #-0.01
@@ -222,17 +224,23 @@ class EXPERIMENT(object):
         pickle.dump(Hobs, open(os.path.join(self.output_dir, "H_obs.pkl"), "wb"))
 
         ## Initialize EKI object
-        eki = EKI(params_samples, y_mean, y_cov, 1)
+        impose_prior = True
+        prior_mean = np.zeros(params_samples.shape[1])
+        prior_cov = np.diag(np.ones(params_samples.shape[1])*0.25)
+        filter_type = "ENKF"
+        eki = EKI(params_samples, y_mean, y_cov, filter_type, impose_prior, prior_mean, prior_cov, 1)
         ## Iterations of EKI steps
         for iterN in tqdm(range(self.DAsteps)):
             print('DA step: ', iterN+1)
             fig_path = os.path.join(self.output_dir, 'figs/EKI_iter'+str(iterN))
+            
+            u_p = eki.update_ensemble_prediction()
             ## Forward simulation of ensemble members
-            G_results = self.ensembleG(eki.u[iterN], traj_obs, traj,
+            G_results = self.ensembleG(u_p, traj_obs, traj,
                                         traj_times, fig_path, n_measurements=len(y_mean)) # nSamples x nData
 
             ## Feed the ensemble evaluaation of G to EKI object
-            eki.EnKI(G_results)
+            eki.update_ensemble_analysis(u_p, G_results)
             print("Error: ", eki.error[-1])
             ## Save the current results of EKI
             pickle.dump(eki.u, open(os.path.join(self.output_dir, "u.pkl"), "wb"))
