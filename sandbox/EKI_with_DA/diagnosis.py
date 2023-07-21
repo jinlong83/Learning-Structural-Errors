@@ -97,28 +97,20 @@ def plotAll(truth, pkl_dir='.', ylabels=None):
         os.makedirs(dir_name)
 
     plt.figure()
-    ax1 = plt.subplot(311)
-    ax2 = plt.subplot(312, sharex=ax1)
-    ax3 = plt.subplot(313, sharex=ax1)
-    ax_list = [ax1, ax2, ax3]
+    fig, ax_list = plt.subplots(nrows=Nstates, ncols=1, sharex=True, squeeze=True)
     for iterS in range(Nstates):
         plotObsErr(ax_list[iterS], y_mean[:, iterS],
                 y_err[:, iterS], 'r', 'o', 'Truth')
-    ax1.set_ylabel(r'$x$')
-    ax2.set_ylabel(r'$y$')
-    ax3.set_ylabel(r'$z$')
-    ax3.set_xlabel('Time')
+        ax_list[iterS].set_ylabel(ylabels[iterS])
     plt.tight_layout()
     plt.savefig(os.path.join(dir_name,'G_observed.pdf'))
     plt.close('all')
 
     for iterN in range(G_samples_all.shape[0]):
 
-        plt.figure(iterN)
-        ax1 = plt.subplot(311)
-        ax2 = plt.subplot(312, sharex=ax1)
-        ax3 = plt.subplot(313, sharex=ax1)
-        ax_list = [ax1, ax2, ax3]
+        # plt.figure(iterN)
+        plt.figure()
+        fig, ax_list = plt.subplots(nrows=Nstates, ncols=1, sharex=True, squeeze=True)
 
         G_samples = G_samples_all[iterN,:,:]
         G_mean = np.mean(G_samples, axis = 0)
@@ -130,14 +122,13 @@ def plotAll(truth, pkl_dir='.', ylabels=None):
         for iterS in range(Nstates):
             plotObsErr(ax_list[iterS], y_mean[:,iterS], y_err[:,iterS], 'r', 'o', 'Truth')
             plotObsErr(ax_list[iterS], G_mean[:,iterS], G_err[:,iterS], 'b', '^', 'EKI')
-        
-        ax1.set_ylabel(r'$x$')
-        ax2.set_ylabel(r'$y$')
-        ax3.set_ylabel(r'$z$')
-        ax3.set_xlabel('EKI steps')
-        ax1.legend(loc = 'upper right')
+            ax_list[iterS].set_ylabel(ylabels[iterS])
+
+        ax_list[-1].set_xlabel('Time steps')
+        ax_list[0].legend(loc = 'upper right')
         plt.tight_layout()
         plt.savefig(os.path.join(dir_name, 'G_' + str(iterN) + '.pdf'))
+        plt.close()
 
     plt.close('all')
     return

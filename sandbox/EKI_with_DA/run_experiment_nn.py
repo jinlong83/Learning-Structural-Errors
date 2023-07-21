@@ -97,6 +97,8 @@ class EXPERIMENT(object):
     def G(self, params_all, obs, true, times, fig_path='.'):
         params = params_all[:self.n_params]
         state0 = params_all[self.n_params:] # dont normalize i.c.'s because we may not observe them anyway!
+        state0 = np.array([50., 50., 10000, 10, 10, 10]) # + np.random.randn(3)
+        print('Warning: using fixed initial conditions')
 
         # set parameters of the ODE
         # for i, name in enumerate(self.param_names):
@@ -179,16 +181,20 @@ class EXPERIMENT(object):
         self.plotData(self.normalizer.encode(traj_obs))
 
         # y_cov = np.diag(np.clip((y_mean * 0.05)**2, 0.01, None)) ## Clip the minimum std to 0.1
-        y_cov = self.WRAP.DA.obs_noise_sd**2 * np.eye(len(y_mean))
+        # y_cov = (10000*self.WRAP.DA.obs_noise_sd)**2 * np.eye(len(y_mean))
+        y_cov = (1)**2 * np.eye(len(y_mean))
+        print('WARNING: assuming observation noise covariance = I')
 
         # PARAMS
-        if self.use_da:
-            params_samples = np.zeros([self.nSamples,self.n_params])
-        else:
-            params_samples = np.zeros([self.nSamples,self.n_params+n_states])
-            # STATES
-            params_samples[:, self.n_params:] = np.array(
-                [self.WRAP.DA.ode.get_inits() for _ in range(self.nSamples)])
+        params_samples = np.zeros([self.nSamples,self.n_params])
+        print('Warning: using fixed initial conditions and not inferring them w/ EKI')
+        # if self.use_da:
+        #     params_samples = np.zeros([self.nSamples,self.n_params])
+        # else:
+        #     params_samples = np.zeros([self.nSamples,self.n_params+n_states])
+        #     # STATES
+        #     params_samples[:, self.n_params:] = np.array(
+        #         [self.WRAP.DA.ode.get_inits() for _ in range(self.nSamples)])
 
         # PARAMS drawn from uniform on -1 to 1
         if self.param_type=='nn':
@@ -248,5 +254,9 @@ class EXPERIMENT(object):
             else:
                 labels = self.param_names + self.WRAP.DA.ode.state_names
                 truth = np.hstack((true_params, self.ic_true))
+
+            # tem to never do state IC inference
+            labels = self.param_names
+            truth = true_params
 
             plotAll(truth, self.output_dir, labels)

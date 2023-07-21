@@ -133,13 +133,15 @@ class UltradianGlucoseModel(object):
 
   """
 
-  def __init__(_s, eps=1e-5, constrain_positive=False, no_h=True,
+  def __init__(_s, eps=1e-5, constrain_positive=False, no_h=False,
+               low_clip_nn=-1000/6,
+               high_clip_nn=1000/6,
                keep_bounded=False,
                driver=np.zeros((0,2)), nn_dims=[3,1], nn_params=None,
                nn_rescale_input=False, nn_rescale_output=False,
                exptype='double',
                k_decay=0.5, a_decay=0.5, b_decay=10,
-               Um=94, U0=4, Rm=209, Rg=180, ti=100, tp=6, Vg=0.1):
+               Um=94, U0=4, Rm=209, Rg=180, ti=100, tp=6, Vg=10):
     '''
     Initialize an instance: setting parameters and xkstar
     '''
@@ -154,6 +156,10 @@ class UltradianGlucoseModel(object):
 
     # remove last 3 states if no_h
     _s.no_h = no_h
+
+    # clip neural net output
+    _s.low_clip_nn = low_clip_nn
+    _s.high_clip_nn = high_clip_nn
 
     _s.exptype = 'double' #'single' #exptype # 'single' or 'double' exponential meal function
     _s.Meals = driver # Time, carbs (mg)
@@ -217,9 +223,9 @@ class UltradianGlucoseModel(object):
 
   def get_state_names(_s):
     if _s.no_h:
-      return ['I_p', 'I_i', 'G', 'h_1', 'h_2', 'h_3']
-    else:
       return ['I_p', 'I_i', 'G']
+    else:
+      return ['I_p', 'I_i', 'G', 'h_1', 'h_2', 'h_3']
 
 
   def get_inits(_s):
@@ -234,7 +240,7 @@ class UltradianGlucoseModel(object):
       state_inits = state_inits[:-3]
 
     print('WARNING: using true state inits w/ small noise')
-    state_inits = np.array([50, 50, 100.00]) + np.random.randn()
+    state_inits = np.array([50, 50, 10000, 10, 10, 10]) + np.random.randn()
     return state_inits
 
   def sample_params(_s, param_names):
@@ -300,8 +306,8 @@ class UltradianGlucoseModel(object):
     ## Sturis Ultradian Glucose Model from Keener Physiology Textbook
 
     # this is the essential step for preventing the model from stalling
-    S = np.clip(S, a_min=[1e-5,1e-5,1e-5], a_max=[1e3, 1e3, 1e3])
-    # S = np.clip(S, a_min=[1e-5,1e-5,1e-5], a_max=[1e4, 1e4, 1e6])
+    # S = np.clip(S, a_min=[1e-5,1e-5,1e-5], a_max=[1e3, 1e3, 1e3])
+    S = np.clip(S, a_min=[1e-5,1e-5,1e-5,1e-5,1e-5,1e-5], a_max=[1e4, 1e4, 1e6, 200, 200, 200])
     # this protects against big steps taken around meal time, causing untrue blowup.
     # this can protect against negative values of Ii, which can cause F3 to blowup.
 
@@ -358,12 +364,14 @@ class UltradianGlucoseModel(object):
     if _s.nn_params is not None:
       # foo_rhs[1] -= np.abs(_s.nn_eval(S))
       # foo_rhs[0] += _s.nn_eval(S) 
-      # Smod = np.copy(S)
-      # Smod[2] /= 100
+      Smod = np.copy(S)
+      Smod[2] /= 100 # scale G, since it is 2 orders of magnitude larger than other states
       # Smod /= 10
       # foo_rhs[0] += np.clip(_s.nn_eval(Smod), -100/6, 0)
-      foo_rhs[0] += _s.nn_eval(S)
-      # foo_rhs[1] += np.clip(_s.nn_eval(S), -np.Inf, 0)
+      # foo_rhs[0] += _s.nn_eval(Smod)
+      # foo_rhs[0] += np.clip(_s.nn_eval(Smod), -np.Inf, 0)
+      # foo_rhs[0] += np.clip(_s.nn_eval(Smod), -1000/6, 1000/6)
+      foo_rhs[0] += np.clip(_s.nn_eval(Smod), _s.low_clip_nn, _s.high_clip_nn)
       # foo_rhs[1] += _s.nn_eval(S)
       # print(_s.nn_eval(S))
       # bp()
