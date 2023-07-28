@@ -226,8 +226,12 @@ class EXPERIMENT(object):
         ## Initialize EKI object
         impose_prior = True
         prior_mean = np.zeros(params_samples.shape[1])
-        prior_cov = np.diag(np.ones(params_samples.shape[1])*0.25)
-        filter_type = "ENKF"
+        prior_mean[self.n_params:self.n_params+3] = (self.WRAP_TRUE.DA.ode.Ipmin +  self.WRAP_TRUE.DA.ode.Ipmax)/2.0, (self.WRAP_TRUE.DA.ode.Iimin + self.WRAP_TRUE.DA.ode.Iimax)/2.0, (self.WRAP_TRUE.DA.ode.Gmin + self.WRAP_TRUE.DA.ode.Gmax)/2.0
+        prior_cov_array = np.ones(params_samples.shape[1])*0.25
+        prior_cov_array[self.n_params:self.n_params+3] = (-self.WRAP_TRUE.DA.ode.Ipmin +  self.WRAP_TRUE.DA.ode.Ipmax)/2.0, (-self.WRAP_TRUE.DA.ode.Iimin + self.WRAP_TRUE.DA.ode.Iimax)/2.0, (-self.WRAP_TRUE.DA.ode.Gmin + self.WRAP_TRUE.DA.ode.Gmax)/2.0
+        prior_cov = np.diag(prior_cov_array)
+        
+        filter_type = "EAKF"
         eki = EKI(params_samples, y_mean, y_cov, filter_type, impose_prior, prior_mean, prior_cov, 1)
         ## Iterations of EKI steps
         for iterN in tqdm(range(self.DAsteps)):

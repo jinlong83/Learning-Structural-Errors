@@ -93,9 +93,14 @@ class EKI:
     # the most recent iteration.
     def compute_error(self):
         diff = self.g_t - self.g[-1].mean(0)
-        error = diff.dot(np.linalg.solve(self.cov, diff))
+        error = diff.dot( diff )
         # normalize error
-        norm = self.g_t.dot(np.linalg.solve(self.cov, self.g_t))
+        norm = self.g_t.dot( self.g_t )
+        
+        print("g_t = ", self.g_t)
+        print("g_t_pred = ", self.g[-1].mean(0))
+        print("diff = ", diff)
+        
         error = error/norm
 
         self.error = np.append(self.error, error)

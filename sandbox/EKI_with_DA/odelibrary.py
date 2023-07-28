@@ -56,7 +56,7 @@ def create_nn(nn_dims, rescale_input=True, rescale_output=True):
     for idx in range(nn_num_layers):
         modules.append(torch.nn.Linear(nn_dims[idx], nn_dims[idx+1]))
         if idx < nn_num_layers - 1:
-            modules.append(torch.nn.ReLU())
+            modules.append(torch.nn.Tanh())
     
     if rescale_output:
       modules.append(torch.nn.Identity()) # need this because parameter fetcher uses every-other layer
@@ -233,8 +233,8 @@ class UltradianGlucoseModel(object):
     if _s.no_h:
       state_inits = state_inits[:-3]
 
-    print('WARNING: using true state inits w/ small noise')
-    state_inits = np.array([50, 50, 100.00]) + np.random.randn()
+#     print('WARNING: using true state inits w/ small noise')
+#     state_inits = np.array([50, 50, 100.00]) + np.random.randn()
     return state_inits
 
   def sample_params(_s, param_names):

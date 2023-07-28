@@ -45,7 +45,7 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
             'integrator': 'RK45'
         }
     elif MODELNAME == 'UltradianGlucoseModel':
-        DAsteps = 5    #EKI steps
+        DAsteps = 10    #EKI steps
         nSamples = 30 #20   #Ensemble size (need more particles for NN w/ 26 params)
 
         DRIVER = np.array(pd.read_csv('../../data/P1_nutrition_expert.csv'))
@@ -65,8 +65,8 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
         # ODE_SETTINGS_APPROX = {'Um': 0, 'U0': 0, 'nn_dims': [3, 25, 1]}
         ODE_SETTINGS_APPROX = {
                                 # 'Rg': 0,
-                            #   'tp': np.inf, 
-                               'nn_dims': [3, 5, 1], 
+                               'tp': np.inf, 
+                               'nn_dims': [3, 10, 1], 
                             #    'constrain_positive': False,
                             #    'nn_dims': [3, 1], 
                                 'nn_rescale_input': False,
@@ -79,7 +79,7 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
             'eta': 1.0, # scale factor for 3DVAR gain matrix K = H.T / eta
             'add_state_noise': True, # add noise to generated dataset.
             'Sigma': state_noise_cov,
-            'obs_noise_sd': 0.0001, #0.01,#20, # amount of noise to add to generated dataset
+            'obs_noise_sd': 0.1, #0.0001, #0.01,#20, # amount of noise to add to generated dataset
             'N_particles': 30, # only active if using enkf algorithm
             'integrator': 'RK45',
             # 'rtol': 0.01,
