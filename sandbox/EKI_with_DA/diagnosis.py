@@ -98,6 +98,8 @@ def plotAll(truth, pkl_dir='.', ylabels=None):
 
     plt.figure()
     fig, ax_list = plt.subplots(nrows=Nstates, ncols=1, sharex=True, squeeze=True)
+    if Nstates==1:
+        ax_list = [ax_list]
     for iterS in range(Nstates):
         plotObsErr(ax_list[iterS], y_mean[:, iterS],
                 y_err[:, iterS], 'r', 'o', 'Truth')
@@ -111,7 +113,8 @@ def plotAll(truth, pkl_dir='.', ylabels=None):
         # plt.figure(iterN)
         plt.figure()
         fig, ax_list = plt.subplots(nrows=Nstates, ncols=1, sharex=True, squeeze=True)
-
+        if Nstates==1:
+            ax_list = [ax_list]
         G_samples = G_samples_all[iterN,:,:]
         G_mean = np.mean(G_samples, axis = 0)
         G_cov = np.cov(G_samples.T)
