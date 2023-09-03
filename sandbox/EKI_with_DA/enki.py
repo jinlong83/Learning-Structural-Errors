@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 from pdb import set_trace as bp
 
 # NOTES:
@@ -141,8 +142,21 @@ class EKI:
         # # Update u
         noise = np.array([np.random.multivariate_normal(np.zeros(ps), cov) for _ in range(J)])
         y = g_t + noise
+
+        # Just using Jinlong's original linalg.solve
         tmp = np.linalg.solve(c_pp + cov, np.transpose(y-g))
         u += c_up.dot(tmp).T
+
+        # Other ways to do the inversion
+        # tmp, residues, tmp_rank, singvals = scipy.linalg.lstsq(c_pp + cov, np.transpose(y-g), cond=1e-8)
+        # if tmp_rank < len(cov):
+        #     print('EKI update is rank deficient. Used least squares instead with condition number threshold 1e-8. Condition number is', singvals[0]/singvals[-1])
+        #     print('Rank after truncation is', tmp_rank)
+        # u += c_up.dot(tmp).T
+
+        # use pseudo-inverse instead
+        # tmp = scipy.linalg.pinv(c_pp + cov)
+        # u += c_up.dot(tmp).dot((y-g).T).T
 
         # Store parameters and observations
         self.u = np.append(self.u, [u], axis=0)
