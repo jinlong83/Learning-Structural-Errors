@@ -45,8 +45,9 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
             'integrator': 'RK45'
         }
     elif MODELNAME == 'UltradianGlucoseModel':
-        DAsteps = 10    #EKI steps
-        nSamples = 100 #20   #Ensemble size (need more particles for NN w/ 26 params)
+        DAsteps = 20    #EKI steps
+        nSamples = 50 #20   #Ensemble size (need more particles for NN w/ 26 params)
+        # Note: Making nSamples too large can lead to worse performance, esp. when things are highly non-gaussian
 
         DRIVER = np.array(pd.read_csv('../../data/P1_nutrition_expert.csv'))
         PARAM_NAMES = [] # list of parameter names to be learned
@@ -54,7 +55,7 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
         T_RANGE = np.arange(3500, 6000, DT) # np.arange(3500, 10000, DT) # generate data every 20 minutes
         # T_RANGE = np.arange(3500, 4500, DT) # np.arange(3500, 10000, DT) # generate data every 20 minutes
         T_DA = int(0.4*len(T_RANGE)) # number of measurements to use in assimilation warmup phase
-        HOBS = np.eye(6) #np.array([[0, 0, 1]])
+        HOBS = np.array([[0, 0, 1, 0, 0, 0]]) #np.eye(6) #
         IC_TRUE = np.array([50., 50., 10000, 10, 10, 10]) # + np.random.randn(3)
         # print('WARNING: using downscaled IC for UltradianGlucoseModel')
         # IC_TRUE = np.array([5, 5, 10])  # + np.random.randn(3)
@@ -183,7 +184,7 @@ if __name__ == "__main__":
     #         meta_dir, f'L63_{seed}'), seed=seed)
 
     # meta_dir = 'results_NN_1stepahead_fixedt0Bug/run_tpInf_trueIC_fullObs_v2'
-    meta_dir = 'results_Sep2_2023/FullObs_LowNoise_fixedICnotlearnt_tpInf_NN1.0/Daniel_debugging'
+    meta_dir = 'results_Sep3_2023/PartialObs_LowNoise_fixedICnotlearnt_tpInf_NN1.0_INV_50N'
     for seed in [0,1]:
         print('Running Ultradian experiments...')
         run_all('UltradianGlucoseModel', meta_dir=os.path.join(
