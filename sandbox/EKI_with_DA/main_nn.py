@@ -11,7 +11,7 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
 
     # Global variables across experiments
     DO_PARALLEL = True  # parallelizes calls to G across ensemble members
-    NORMALIZER = InactiveNormalizer #UnitGaussianNormalizer # normalizes observation data to zero mean, unit variance
+    NORMALIZER = UnitGaussianNormalizer # normalizes observation data to zero mean, unit variance
 
     # Set to run NN inferences
     PARAM_TYPE = 'nn'
@@ -45,8 +45,8 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
             'integrator': 'RK45'
         }
     elif MODELNAME == 'UltradianGlucoseModel':
-        DAsteps = 5    #EKI steps
-        nSamples = 30 #20   #Ensemble size (need more particles for NN w/ 26 params)
+        DAsteps = 10    #EKI steps
+        nSamples = 100 #20   #Ensemble size (need more particles for NN w/ 26 params)
 
         DRIVER = np.array(pd.read_csv('../../data/P1_nutrition_expert.csv'))
         PARAM_NAMES = [] # list of parameter names to be learned
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     #         meta_dir, f'L63_{seed}'), seed=seed)
 
     # meta_dir = 'results_NN_1stepahead_fixedt0Bug/run_tpInf_trueIC_fullObs_v2'
-    meta_dir = 'results_July20_2023/FullObs_LowNoise_fixedICnotlearnt_tpInf_NN1.0/Daniel_debugging'
+    meta_dir = 'results_Sep2_2023/FullObs_LowNoise_fixedICnotlearnt_tpInf_NN1.0/Daniel_debugging'
     for seed in [0,1]:
         print('Running Ultradian experiments...')
         run_all('UltradianGlucoseModel', meta_dir=os.path.join(
