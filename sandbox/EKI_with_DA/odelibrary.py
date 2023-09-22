@@ -44,6 +44,13 @@ def my_solve_ivp(ic, f_rhs, t_eval, t_span, settings):
         u_sol = sol.y.T
     return np.squeeze(u_sol)
 
+def rescale(x, low, high):
+    # maps a variable in [-1,1] to the original range
+    # Perform the rescaling
+    scaled_value = low + ( (x + 1) * (high - low) / 2 )
+    
+    return scaled_value
+
 ## NN functions
 def create_nn(nn_dims, rescale_input=True, rescale_output=True):
 
@@ -226,7 +233,18 @@ class UltradianGlucoseModel(object):
       return ['I_p', 'I_i', 'G']
     else:
       return ['I_p', 'I_i', 'G', 'h_1', 'h_2', 'h_3']
-
+  
+  def rescale_states(_s, x):
+    Ip = rescale(x[0], _s.Ipmin, _s.Ipmax)
+    Ii = rescale(x[1], _s.Iimin, _s.Iimax)
+    G = rescale(x[2], _s.Gmin, _s.Gmax)
+    if _s.no_h:
+      return np.array([Ip, Ii, G])
+    else:
+      h1 = rescale(x[3], _s.h1min, _s.h1max)
+      h2 = rescale(x[4], _s.h2min, _s.h2max)
+      h3 = rescale(x[5], _s.h3min, _s.h3max)
+      return np.array([Ip, Ii, G, h1, h2, h3])
 
   def get_inits(_s):
     Iprand = _s.Ipmin+(_s.Ipmax-_s.Ipmin)*np.random.random()
@@ -239,8 +257,8 @@ class UltradianGlucoseModel(object):
     if _s.no_h:
       state_inits = state_inits[:-3]
 
-    print('WARNING: using true state inits w/ small noise')
-    state_inits = np.array([50, 50, 10000, 10, 10, 10]) + np.random.randn()
+    # print('WARNING: using true state inits w/ small noise')
+    # state_inits = np.array([50, 50, 10000, 10, 10, 10]) + np.random.randn()
     return state_inits
 
   def sample_params(_s, param_names):
@@ -429,6 +447,11 @@ class L63:
     _s.keep_bounded = keep_bounded
     _s.state_names = ['x','y','z']
 
+    # set state ranges
+    _s.xmin, _s.xmax = (-20, 20)
+    _s.ymin, _s.ymax = (-30, 30)
+    _s.zmin, _s.zmax = (5, 45)
+
     # create model error
     _s.remove_y = remove_y
 
@@ -454,14 +477,16 @@ class L63:
                      ).detach().numpy().flatten()
     return foo
 
-  def get_inits(_s):
-    (xmin, xmax) = (-20,20)
-    (ymin, ymax) = (-30,30)
-    (zmin, zmax) = (5,45)
+  def rescale_states(_s, S):
+    x = rescale(S[0], _s.xmin, _s.xmax)
+    y = rescale(S[1], _s.ymin, _s.ymax)
+    z = rescale(S[2], _s.zmin, _s.zmax)
+    return np.array([x, y, z])
 
-    xrand = xmin+(xmax-xmin)*np.random.random()
-    yrand = ymin+(ymax-ymin)*np.random.random()
-    zrand = zmin+(zmax-zmin)*np.random.random()
+  def get_inits(_s):
+    xrand = _s.xmin+(_s.xmax-_s.xmin)*np.random.random()
+    yrand = _s.ymin+(_s.ymax-_s.ymin)*np.random.random()
+    zrand = _s.zmin+(_s.zmax-_s.zmin)*np.random.random()
     state_inits = np.array([xrand, yrand, zrand])
     return state_inits
 

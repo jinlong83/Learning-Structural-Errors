@@ -96,9 +96,8 @@ class EXPERIMENT(object):
 
     def G(self, params_all, obs, true, times, fig_path='.'):
         params = params_all[:self.n_params]
-        state0 = params_all[self.n_params:] # dont normalize i.c.'s because we may not observe them anyway!
-        state0 = np.array([50., 50., 10000, 10, 10, 10]) # + np.random.randn(3)
-        print('Warning: using fixed initial conditions')
+        # state0 = np.array([50., 50., 10000, 10, 10, 10]) # + np.random.randn(3)
+        # print('Warning: using fixed initial conditions')
 
         # set parameters of the ODE
         # for i, name in enumerate(self.param_names):
@@ -115,6 +114,9 @@ class EXPERIMENT(object):
             # use self.t_da to discard predictions made during transient assimilation phase
             pred_final = pred_rollout[self.t_da:]
         else:
+            state0 = params_all[self.n_params:] # dont normalize i.c.'s because we may not observe them anyway!
+            # rescale initial conditions (-1,1) to original scale 
+            state0 = self.WRAP.DA.ode.rescale_states(state0)
             # solve system
             states = self.WRAP.solve(state0, times)
             pred_final = (self.da_settings['H']@states.T).T
@@ -162,7 +164,11 @@ class EXPERIMENT(object):
             self.n_params = self.WRAP.DA.ode.nn_num_params
             # define parameter names as theta indexed by i with superscript NN in latex format
             self.param_names = [r'$\theta^{(NN)}_{' + str(i) + '}$' for i in range(self.n_params)]
-            true_params = np.nan*np.ones(self.n_params) # store truth as zeros
+            # include state names if not using DA
+            if not self.use_da:
+                self.param_names += self.WRAP.DA.ode.state_names
+
+            true_params = np.nan*np.ones(len(self.param_names)) # store truth as zeros
         
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
@@ -186,25 +192,27 @@ class EXPERIMENT(object):
         print('WARNING: assuming observation noise covariance = I')
 
         # PARAMS
-        params_samples = np.zeros([self.nSamples,self.n_params])
-        print('Warning: using fixed initial conditions and not inferring them w/ EKI')
-        # if self.use_da:
-        #     params_samples = np.zeros([self.nSamples,self.n_params])
-        # else:
-        #     params_samples = np.zeros([self.nSamples,self.n_params+n_states])
-        #     # STATES
-        #     params_samples[:, self.n_params:] = np.array(
-        #         [self.WRAP.DA.ode.get_inits() for _ in range(self.nSamples)])
+        # params_samples = np.zeros([self.nSamples,self.n_params])
+        # print('Warning: using fixed initial conditions and not inferring them w/ EKI')
+        if self.use_da:
+            params_samples = np.zeros([self.nSamples,self.n_params])
+        else:
+            params_samples = np.zeros([self.nSamples,self.n_params+n_states])
+            # STATES
+            # params_samples[:, self.n_params:] = np.array(
+            #     [self.WRAP.DA.ode.get_inits() for _ in range(self.nSamples)])
 
         # PARAMS drawn from uniform on -1 to 1
         if self.param_type=='nn':
-            params_samples[:, :self.n_params] = np.random.uniform(-1, 1, size=(self.nSamples, self.n_params))
+            params_samples = np.random.uniform(-1,
+                                               1, size=(self.nSamples, self.n_params+n_states))
+            # params_samples[:, :self.n_params] = np.random.uniform(-1, 1, size=(self.nSamples, self.n_params))
             # params_samples[:, 1:] *= 0.001
             # params_samples[:, 0] = -1/6 #0
             # params_samples[:, 1] = 0 #-0.01
             # params_samples[:, 2] = 0
             # params_samples[:, 3] = 0
-            
+
             if self.WRAP.DA.ode.nn_rescale_input:
                 n_in = 2*self.WRAP_TRUE.DA.ode.nn_dims[0]
                 # first parameters the per-state bias and sd for nn inputs
@@ -218,6 +226,7 @@ class EXPERIMENT(object):
         elif self.param_type=='mech':
             params_samples[:, :self.n_params] = np.array([self.WRAP.DA.ode.sample_params(
                 param_names=self.param_names) for _ in range(self.nSamples)])
+            # note: missing a good initialization for the ICs! fix this if doing pure mech. inference
 
         print("Number of cpu : ", multiprocessing.cpu_count())
 

@@ -131,7 +131,7 @@ def plotAll(truth, pkl_dir='.', ylabels=None):
         ax_list[0].legend(loc = 'upper right')
         plt.tight_layout()
         plt.savefig(os.path.join(dir_name, 'G_' + str(iterN) + '.pdf'))
-        plt.close()
+        plt.close('all')
 
     plt.close('all')
     return

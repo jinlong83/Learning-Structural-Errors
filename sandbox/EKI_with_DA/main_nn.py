@@ -18,13 +18,13 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
 
     ## L63 settings
     if MODELNAME == 'L63':
-        DAsteps = 10 #EKI steps
-        nSamples = 30 #Ensemble size
+        DAsteps = 50 #EKI steps
+        nSamples = 50 #Ensemble size
 
         DRIVER = None
         PARAM_NAMES = []  # list of parameter names to be learned
         DT = 0.05
-        T_RANGE = np.arange(0, 15, DT)  # generate data every 20 minutes
+        T_RANGE = np.arange(0, 7.5, DT)
         HOBS = np.array([[1, 0, 0]])
         T_DA = int(0.5*len(T_RANGE))
         IC_TRUE = np.array([10, 10, 10]) + np.random.randn(3)
@@ -45,7 +45,7 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
             'integrator': 'RK45'
         }
     elif MODELNAME == 'UltradianGlucoseModel':
-        DAsteps = 20    #EKI steps
+        DAsteps = 50    #EKI steps
         nSamples = 50 #20   #Ensemble size (need more particles for NN w/ 26 params)
         # Note: Making nSamples too large can lead to worse performance, esp. when things are highly non-gaussian
 
@@ -82,7 +82,7 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
             'eta': 1.0, # scale factor for 3DVAR gain matrix K = H.T / eta
             'add_state_noise': True, # add noise to generated dataset.
             'Sigma': state_noise_cov,
-            'obs_noise_sd': 0.0001, #0.01,#20, # amount of noise to add to generated dataset
+            'obs_noise_sd': 100, #1e-4 #0.01,#20, # amount of noise to add to generated dataset
             'N_particles': 30, # only active if using enkf algorithm
             'integrator': 'RK45',
             # 'rtol': 0.01,
@@ -160,14 +160,15 @@ def run_all(MODELNAME='L63', meta_dir='results', seed=0):
         da_settings=DA_SETTINGS)
 
     ## Run experiments:
+    # run joint 
+    experiment['joint'].run()
+
     # # run enkf
     # experiment['enkf'].run()
 
     # Run 3dvar
     # experiment['3dvar'].run()
 
-    # run joint
-    experiment['joint'].run()
 
     # run joint for longer
     # experiment['joint'].normalizer = NORMALIZER
@@ -184,11 +185,16 @@ if __name__ == "__main__":
     #         meta_dir, f'L63_{seed}'), seed=seed)
 
     # meta_dir = 'results_NN_1stepahead_fixedt0Bug/run_tpInf_trueIC_fullObs_v2'
-    meta_dir = 'results_Sep3_2023/PartialObs_LowNoise_fixedICnotlearnt_tpInf_NN1.0_INV_50N'
+    meta_dir = 'results_Sep21_2023/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters'
     for seed in [0,1]:
+        print('Running L63 experiments...')
+        run_all('L63', meta_dir=os.path.join(
+            meta_dir, f'L63_{seed}'), seed=seed)
+
         print('Running Ultradian experiments...')
         run_all('UltradianGlucoseModel', meta_dir=os.path.join(
             meta_dir,f'UltradianGlucoseModel_{seed}_5hidden'), seed=seed)
+
 
 
 
