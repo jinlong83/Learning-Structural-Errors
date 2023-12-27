@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
     # meta_dir = 'results_NN_1stepahead_fixedt0Bug/run_tpInf_trueIC_fullObs_v2'
     # meta_dir = "results_Oct24_2023_v2/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters"
-    meta_dir = "results_Dec26_2023_v2/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters"
+    meta_dir = "results_Dec26_2023_v4/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters"
     for seed in [1]:
         # print('Running L63 experiments...')
         # run_all('L63', meta_dir=os.path.join(

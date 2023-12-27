@@ -140,7 +140,7 @@ def plotAll(truth, pkl_dir=".", param_names=None, state_names=None):
         ax_list = [ax_list]
     for iterS in range(Nstates):
         plotObsErr(ax_list[iterS], y_mean[:, iterS], y_err[:, iterS], "r", "o", "Truth")
-        ax_list[iterS].set_ylabel(state_names[iterS])
+        ax_list[iterS].set_ylabel(r"${}(t)$".format(state_names[iterS]))
     plt.tight_layout()
     plt.savefig(os.path.join(dir_name, "G_observed.pdf"))
     plt.close("all")
@@ -168,11 +168,12 @@ def plotAll(truth, pkl_dir=".", param_names=None, state_names=None):
                 ax_list[iterS], G_mean[:, iterS], G_err[:, iterS], "b", "^", "EKI"
             )
             print(state_names)
-            ax_list[iterS].set_ylabel(state_names[iterS])
+            ax_list[iterS].set_ylabel(r"${}(t)$".format(state_names[iterS]))
 
-        ax_list[-1].set_xlabel("Time steps")
+        ax_list[-1].set_xlabel(r"$t$ [min]")
         ax_list[0].legend(loc="upper right")
-        plt.tight_layout()
+        # plt.tight_layout()
+        plt.subplots_adjust(bottom=0.2, left=0.2)
         plt.savefig(os.path.join(dir_name, "G_" + str(iterN) + ".pdf"))
         plt.close("all")
 
