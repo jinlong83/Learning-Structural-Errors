@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 from scipy.integrate import solve_ivp
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, Matern, WhiteKernel, ConstantKernel
+# from sklearn.gaussian_process import GaussianProcessRegressor
+# from sklearn.gaussian_process.kernels import RBF, Matern, WhiteKernel, ConstantKernel
 
 # from matplotlib import pyplot
 # from numba import jitclass          # import the decorator
@@ -201,15 +201,15 @@ class UltradianGlucoseModel(object):
     _s.has_diverged = False
 
     # set state ranges
-    _s.Ipmin, _s.Ipmax = (10, 300) # (80, 90)
-    _s.Iimin, _s.Iimax = (10, 300) # (150, 170)
+    _s.I_pmin, _s.I_pmax = (10, 300) # (80, 90)
+    _s.I_imin, _s.I_imax = (10, 300) # (150, 170)
     _s.Gmin, _s.Gmax = (5000, 40000) # (9000, 11000)
-    _s.h1min, _s.h1max = (10, 300) # (60, 80)
-    _s.h2min, _s.h2max = (10, 300) # (60, 80)
-    _s.h3min, _s.h3max = (10, 300) # (60, 80)
+    _s.h_1min, _s.h_1max = (10, 300) # (60, 80)
+    _s.h_2min, _s.h_2max = (10, 300) # (60, 80)
+    _s.h_3min, _s.h_3max = (10, 300) # (60, 80)
 
     _s.state_names = _s.get_state_names()
-
+    
     # set neural net
     _s.nn_params = nn_params
     _s.nn_dims = nn_dims # dimensions of each layer of the neural net
@@ -218,16 +218,27 @@ class UltradianGlucoseModel(object):
     _s.net = create_nn(_s.nn_dims, rescale_input=_s.nn_rescale_input, rescale_output=_s.nn_rescale_output)
     _s.nn_num_params = sum(p.numel() for p in _s.net.parameters() if p.requires_grad)
 
+    _s.x_grid = _s.make_state_grid()
+
+  def make_state_grid(_s, n_grid=10):
+    '''Builds a grid of states from min to max along each state dimension'''
+    grid = np.meshgrid(*[np.linspace(_s.__dict__[state_name+'min'], _s.__dict__[state_name+'max'], n_grid) for state_name in _s.state_names], indexing='ij')
+    # returns n_states x n_grid x n_grid x n_grid x n_grid x n_grid x n_grid
+    return np.array(grid)
+
   def set_nn(_s, nn_params):
     _s.my_nn = my_nn(nn_params, _s.net)
 
   def nn_eval(_s, x):
+    x = x.copy()
+    x[2] /= 100 # scale G, since it is 2 orders of magnitude larger than other states
     with torch.no_grad():
-    #   foo = my_nn(x, _s.nn_params, _s.net) #, _s.nn_num_layers)
         foo = _s.my_nn(torch.tensor(x, dtype=torch.float32)
-                     ).detach().numpy().flatten()
-    return foo
+                     ).detach().numpy().squeeze() #.flatten()
 
+    foo = np.clip(foo, _s.low_clip_nn, _s.high_clip_nn)
+    return foo
+  
   def get_state_names(_s):
     if _s.no_h:
       return ['I_p', 'I_i', 'G']
@@ -235,24 +246,24 @@ class UltradianGlucoseModel(object):
       return ['I_p', 'I_i', 'G', 'h_1', 'h_2', 'h_3']
   
   def rescale_states(_s, x):
-    Ip = rescale(x[0], _s.Ipmin, _s.Ipmax)
-    Ii = rescale(x[1], _s.Iimin, _s.Iimax)
+    Ip = rescale(x[0], _s.I_pmin, _s.I_pmax)
+    Ii = rescale(x[1], _s.I_imin, _s.I_imax)
     G = rescale(x[2], _s.Gmin, _s.Gmax)
     if _s.no_h:
       return np.array([Ip, Ii, G])
     else:
-      h1 = rescale(x[3], _s.h1min, _s.h1max)
-      h2 = rescale(x[4], _s.h2min, _s.h2max)
-      h3 = rescale(x[5], _s.h3min, _s.h3max)
+      h1 = rescale(x[3], _s.h_1min, _s.h_1max)
+      h2 = rescale(x[4], _s.h_2min, _s.h_2max)
+      h3 = rescale(x[5], _s.h_3min, _s.h_3max)
       return np.array([Ip, Ii, G, h1, h2, h3])
 
   def get_inits(_s):
-    Iprand = _s.Ipmin+(_s.Ipmax-_s.Ipmin)*np.random.random()
-    Iirand = _s.Iimin+(_s.Iimax-_s.Iimin)*np.random.random()
+    Iprand = _s.I_pmin+(_s.I_pmax-_s.I_pmin)*np.random.random()
+    Iirand = _s.I_imin+(_s.I_imax-_s.I_imin)*np.random.random()
     Grand  = _s.Gmin +(_s.Gmax-_s.Gmin)*np.random.random()
-    h1rand = _s.h1min+(_s.h1max-_s.h1min)*np.random.random()
-    h2rand = _s.h2min+(_s.h2max-_s.h2min)*np.random.random()
-    h3rand = _s.h3min+(_s.h3max-_s.h3min)*np.random.random()
+    h1rand = _s.h_1min+(_s.h_1max-_s.h_1min)*np.random.random()
+    h2rand = _s.h_2min+(_s.h_2max-_s.h_2min)*np.random.random()
+    h3rand = _s.h_3min+(_s.h_3max-_s.h_3min)*np.random.random()
     state_inits = np.array([Iprand, Iirand, Grand, h1rand, h2rand, h3rand])
     if _s.no_h:
       state_inits = state_inits[:-3]
@@ -319,29 +330,16 @@ class UltradianGlucoseModel(object):
 
     return delrate
 
-  def rhs(_s, S, t):
-    # print(np.log10(S))
+  def rhs(_s, S, t, add_correction=True):
+    '''add_correction is a flag to add the NN correction term to the Ip equation.
+    It is only active if _s.nn_params is not None.'''
     ## Sturis Ultradian Glucose Model from Keener Physiology Textbook
 
     # this is the essential step for preventing the model from stalling
     # S = np.clip(S, a_min=[1e-5,1e-5,1e-5], a_max=[1e3, 1e3, 1e3])
-    S = np.clip(S, a_min=[1e-5,1e-5,1e-5,1e-5,1e-5,1e-5], a_max=[1e4, 1e4, 1e6, 200, 200, 200])
+    S = np.array(torch.clip(torch.Tensor(S.T), min=torch.Tensor([1e-5,1e-5,1e-5,1e-5,1e-5,1e-5]), max=torch.Tensor([1e4, 1e4, 1e6, 200, 200, 200]))).T
     # this protects against big steps taken around meal time, causing untrue blowup.
     # this can protect against negative values of Ii, which can cause F3 to blowup.
-
-    ## Read in variables
-    # force states to be positive
-    # if _s.constrain_positive:
-    #   print('Constraining positive')
-    #   is_neg = S < 0
-    #   S[is_neg] = _s.eps
-
-    # if _s.keep_bounded:
-    #   print('bounding')
-    #   bounds = [500, 500, 1e5]
-    #   for idx in range(len(bounds)):
-    #     if S[idx] > bounds[idx]:
-    #       S[idx] = bounds[idx]
 
     if _s.no_h:
       Ip, Ii, G = S
@@ -352,16 +350,11 @@ class UltradianGlucoseModel(object):
     nutrition_oral = _s.SturisDynaPhenoExtendedMeals(t) #/ (10/_s.Vg)
 
     ## System of 6 ODEs##
-    if _s.no_h:
-      foo_rhs = np.zeros(3)  # a column vector
-    else:
-      foo_rhs = np.zeros(6)  # a column vector
+    foo_rhs = np.zeros_like(S)
 
     #plasma insulin mU
     foo_rhs[0] = _s.F1(G) - (Ip/_s.Vp - Ii/_s.Vi) * \
       _s.E - Ip/_s.tp  # dx/dt (mU/min)
-    # print('tp=',_s.tp)
-    # print('Ip/tp =', Ip/_s.tp)
 
     #insterstitial insulin mU
     foo_rhs[1] = (Ip/_s.Vp - Ii/_s.Vi)*_s.E - Ii/_s.ti  # foo_rhs/dt (mU/min)
@@ -377,35 +370,9 @@ class UltradianGlucoseModel(object):
       foo_rhs[4] = (h1-h2)/_s.td
       foo_rhs[5] = (h2-h3)/_s.td
 
-    #  XXXXX add NN correction for insulin-dependent glucose absorption (Um=U0=0)
     # add NN correction for missing -I_p / t_p term in I_p equation (t_p=np.inf)
-    if _s.nn_params is not None:
-      # foo_rhs[1] -= np.abs(_s.nn_eval(S))
-      # foo_rhs[0] += _s.nn_eval(S) 
-      Smod = np.copy(S)
-      Smod[2] /= 100 # scale G, since it is 2 orders of magnitude larger than other states
-      # Smod /= 10
-      # foo_rhs[0] += np.clip(_s.nn_eval(Smod), -100/6, 0)
-      # foo_rhs[0] += _s.nn_eval(Smod)
-      # foo_rhs[0] += np.clip(_s.nn_eval(Smod), -np.Inf, 0)
-      # foo_rhs[0] += np.clip(_s.nn_eval(Smod), -1000/6, 1000/6)
-      foo_rhs[0] += np.clip(_s.nn_eval(Smod), _s.low_clip_nn, _s.high_clip_nn)
-      # foo_rhs[1] += _s.nn_eval(S)
-      # print(_s.nn_eval(S))
-      # bp()
-
-    # if _s.constrain_positive:
-    #   foo_rhs[is_neg] = np.abs(foo_rhs[is_neg])
-
-    # clip foo_rhs to prevent overflow
-    # if np.abs(foo_rhs[0]) > 250 or np.abs(foo_rhs[1]) > 250 or np.abs(foo_rhs[2]) > 5000:
-    #   print(foo_rhs)
-
-    # foo_rhs = np.clip(foo_rhs, a_min=1e-5*np.ones_like(foo_rhs), a_max=np.array([10,10,5000]))
-
-    # print(foo_rhs)
-    # print(t)
-    # foo_rhs
+    if _s.nn_params is not None and add_correction:
+      foo_rhs[0] += _s.nn_eval(S)
 
     return foo_rhs
 
@@ -467,14 +434,27 @@ class L63:
         _s.nn_dims, rescale_input=_s.nn_rescale_input, rescale_output=_s.nn_rescale_output)
     _s.nn_num_params = sum(p.numel() for p in _s.net.parameters() if p.requires_grad)
 
+    _s.x_grid = _s.make_state_grid()
+
   def set_nn(_s, nn_params):
     _s.my_nn = my_nn(nn_params, _s.net)
 
+  def make_state_grid(_s, n_grid=20):
+    '''Builds a grid of states from min to max along each state dimension'''
+    foo = [np.linspace(_s.__dict__[state_name+'min'], _s.__dict__[state_name+'max'], n_grid) for state_name in _s.state_names]
+
+    # foo[0] = np.linspace(-20,20, 7)
+    # foo[1] = np.linspace(-30,30, 8)
+    # foo[2] = np.linspace(5, 45, 9)
+
+    grid = np.meshgrid(*foo, indexing='ij')
+    # returns n_states x n_grid x n_grid x n_grid
+    return np.array(grid)
+
   def nn_eval(_s, x):
     with torch.no_grad():
-    #   foo = my_nn(x, _s.nn_params, _s.net) #, _s.nn_num_layers)
         foo = _s.my_nn(torch.tensor(x, dtype=torch.float32)
-                     ).detach().numpy().flatten()
+                     ).detach().numpy().squeeze() #.flatten()
     return foo
 
   def rescale_states(_s, S):
@@ -502,8 +482,10 @@ class L63:
   def plot_state_indices(_s):
     return [0,1,2]
 
-  def rhs(_s, S, t):
-    ''' Full system RHS '''
+  def rhs(_s, S, t, add_correction=True):
+    ''' Full system RHS.
+     add_correction is a flag to add the NN correction term.
+    It is only active if _s.nn_params is not None. '''
     a = _s.a
     b = _s.b
     c = _s.c
@@ -515,7 +497,7 @@ class L63:
     y = S[1]
     z = S[2]
 
-    foo_rhs = np.empty(3)
+    foo_rhs = np.empty_like(S)
 
     # X-component
     foo_rhs[0] = -a*x + a*y
@@ -526,7 +508,7 @@ class L63:
     else:
       foo_rhs[1] = b*x - y - x*z
 
-    if _s.nn_params is not None:
+    if _s.nn_params is not None and add_correction:
       foo_rhs[1] += _s.nn_eval(S)
 
     # Z-component

@@ -80,6 +80,15 @@ class WRAPPER(object):
 		# return 1-step ahead prediction
 		return self.DA.y_pred
 
+	# def get_nn(self, params):
+	# 	'''return the neural network function defined by the given input parameters'''
+	# 	# set parameters of the ODE
+	# 	for i, name in enumerate(self.DA.ode.param_names):
+	# 		setattr(self.DA.ode, name, params[i])
+		
+	# 	# return the neural network function
+	# 	return self.DA.ode.nn_clipped_scaled_eval		
+
 def generate_data(dt, t_eval, ode, t0=0):
 	ic = ode.get_inits()
 	t_span = [t_eval[0], t_eval[-1]]
