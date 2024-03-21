@@ -1,0 +1,14 @@
+name: ekida
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - seaborn
+  - matplotlib
+  - pandas
+  - scipy
+  - tqdm
+prefix: /opt/homebrew/anaconda3/envs/ekida
