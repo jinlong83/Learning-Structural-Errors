@@ -5,7 +5,7 @@ import matplotlib
 import numpy as np
 from pdb import set_trace as bp
 
-matplotlib.rcParams["text.usetex"] = True
+matplotlib.rcParams["text.usetex"] = False
 
 # Add global settings for larger font sizes
 font_size = 20

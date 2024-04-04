@@ -11,4 +11,5 @@ dependencies:
   - pandas
   - scipy
   - tqdm
+  - cvxopt
 prefix: /opt/homebrew/anaconda3/envs/ekida
