@@ -2,7 +2,6 @@ import numpy as np
 import cvxopt
 from cvxopt import matrix, spdiag
 import sys
-import pdb
 
 # NOTES:
 #
@@ -64,7 +63,8 @@ class EKI:
         # self.inflation_std = 1e-3  # standard deviation for inflation
         self.lam = 1.0  # L1-norm upper bound
         self.sparse_threshold = 0.1  # threshold for sparsity
-        self.inflation_std = 10  # standard deviation for inflation
+        self.inflation_std = 1e-3  # standard deviation for inflation (parameters)
+        self.cov_inflation_std = 1e-8  # covariance inflation (data and parameters)
 
     # Parameters corresponding to minimum error.
     # Returns mean and standard deviation.
@@ -223,7 +223,7 @@ class EKI:
             c_ww_inv = np.linalg.inv(c_ww)
         else:    
             print("c_ww is not invertible! diagonal noise has been added.")
-            c_ww_inv = np.linalg.inv(c_ww)
+            c_ww_inv = np.linalg.inv(c_ww + self.cov_inflation_std*np.identity(c_ww.shape[0]))
         w_hat = np.hstack([u, g])
         Hs = np.eye(us, us+ps)
         Hp = np.hstack([np.zeros((ps, us)), np.eye(ps)])
