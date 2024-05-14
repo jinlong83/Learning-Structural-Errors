@@ -199,7 +199,7 @@ class EXPERIMENT(object):
             Ii_grid = np.linspace(self.WRAP.DA.ode.I_imin, self.WRAP.DA.ode.I_imax, 100)
             f_nn_grid = np.zeros_like(Ii_grid)
             for i in range(Ii_grid.shape[0]):
-                x[0] = Ii_grid[i]
+                x[1] = Ii_grid[i]
                 f_nn_grid[i] = self.WRAP.DA.ode.nn_eval(x)
             plt.figure(figsize=figsize)
             plt.plot(
