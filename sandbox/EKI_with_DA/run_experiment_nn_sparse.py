@@ -4,12 +4,10 @@ import multiprocessing
 from diagnosis import plotAll, plot_function_comparisons
 
 # from models import Ultradian
-from DA import WRAPPER
 from tqdm import tqdm
 import pandas as pd
 from utils import UnitGaussianNormalizer, MaxMinNormalizer, InactiveNormalizer
 # from enki import EKI
-from enki_cvxopt import EKI
 from time import time
 import pickle
 from pdb import set_trace as bp
@@ -58,6 +56,9 @@ class EXPERIMENT(object):
         output_dir=".",
         seed=10,
         l2_reg=0,
+        lam=1.0,
+        sparse_threshold=0.1,
+        inflation_std=1e-3,
     ):
         self.error_component_index = error_component_index  # which component of the ode RHS has an error term (1 for L63, 0 for ultradian)
         self.param_names = param_names
@@ -80,6 +81,9 @@ class EXPERIMENT(object):
         self.output_dir = output_dir
         self.seed = seed
         self.l2_reg = l2_reg
+        self.lam = lam
+        self.sparse_threshold = sparse_threshold
+        self.inflation_std = inflation_std
 
     def splitData(self, traj_times, traj, traj_obs):
         """Split trajectory data into warmup and rollout phases"""
@@ -134,6 +138,9 @@ class EXPERIMENT(object):
         params = params_all[: self.n_params]
         self.WRAP.DA.ode.nn_params = params
         self.WRAP.DA.ode.set_nn(params)
+
+        # save the NN parameters to a file
+        np.save(os.path.join(fig_path, "params.npy"), params)
 
         matplotlib.rcParams.update(param_dict)
         if "Ult" in fig_path:
@@ -302,6 +309,10 @@ class EXPERIMENT(object):
         return Gmatrix
 
     def run(self):
+        np.random.seed(self.seed)
+        from enki_cvxopt import EKI  # must import AFTER setting random seed
+        from DA import WRAPPER
+
         # initialize wrapper class
         # holds models and Data Assimilators
         self.WRAP_TRUE = WRAPPER(ode_settings=self.ode_settings_true, **self.__dict__)
@@ -336,7 +347,6 @@ class EXPERIMENT(object):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
-        np.random.seed(self.seed)
         start = time()
 
         ## Data generation with a initial condition
@@ -443,7 +453,10 @@ class EXPERIMENT(object):
             print("No existing run to plot")
 
         ## Initialize EKI object
-        eki = EKI(params_samples, y_mean, y_cov, 1)
+        eki = EKI(params_samples, y_mean, y_cov, 1,
+                  lam=self.lam,
+                  sparse_threshold=self.sparse_threshold,
+                  inflation_std=self.inflation_std)
         ## Iterations of EKI steps
         for iterN in tqdm(range(self.DAsteps)):
             print("DA step: ", iterN + 1)
@@ -459,7 +472,10 @@ class EXPERIMENT(object):
             )  # nSamples x nData
 
             ## Feed the ensemble evaluaation of G to EKI object
-            eki.EnKI(G_results)
+            # if last 2 iterations, omit inflation
+            inflate_u = iterN < self.DAsteps - 5
+            eki.EnKI(G_results, inflate_u=inflate_u)
+
             print("Error: ", eki.error[-1])
             ## Save the current results of EKI
             pickle.dump(eki.u, open(os.path.join(self.output_dir, "u.pkl"), "wb"))

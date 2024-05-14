@@ -7,13 +7,15 @@ from run_experiment_nn_sparse import EXPERIMENT
 
 from pdb import set_trace as bp
 
-def run_all(MODELNAME="L63", meta_dir="results", seed=0):
+def run_all(MODELNAME="L63", meta_dir="results", seed=0,
+            lam=1.0, sparse_threshold=0.1, inflation_std=1e-3,
+            DAsteps=50, nSamples=50, DO_PARALLEL=True, NORMALIZER=UnitGaussianNormalizer):
     # set seed for reproducibility (only used for IC generation)
     np.random.seed(seed)
 
     # Global variables across experiments
-    DO_PARALLEL = True  # parallelizes calls to G across ensemble members
-    NORMALIZER = UnitGaussianNormalizer  # normalizes observation data to zero mean, unit variance
+    # DO_PARALLEL = True  # parallelizes calls to G across ensemble members
+    # NORMALIZER = UnitGaussianNormalizer  # normalizes observation data to zero mean, unit variance
 
     # Set to run NN inferences
     PARAM_TYPE = "nn"
@@ -21,9 +23,6 @@ def run_all(MODELNAME="L63", meta_dir="results", seed=0):
     ## L63 settings
     if MODELNAME == "L63":
         error_component_index = 1
-
-        DAsteps = 50  # EKI steps
-        nSamples = 50  # Ensemble size
 
         DRIVER = None
         PARAM_NAMES = []  # list of parameter names to be learned
@@ -54,8 +53,6 @@ def run_all(MODELNAME="L63", meta_dir="results", seed=0):
     elif MODELNAME == "UltradianGlucoseModel":
         error_component_index = 0
 
-        DAsteps = 50  # EKI steps
-        nSamples = 50  # 20   #Ensemble size (need more particles for NN w/ 26 params)
         # Note: Making nSamples too large can lead to worse performance, esp. when things are highly non-gaussian
 
         DRIVER = np.array(pd.read_csv("../../data/P1_nutrition_expert.csv"))
@@ -127,6 +124,9 @@ def run_all(MODELNAME="L63", meta_dir="results", seed=0):
         ode_settings_approx=ODE_SETTINGS_APPROX,
         ode_settings_true=ODE_SETTINGS_TRUE,
         da_settings=DA_SETTINGS,
+        lam=lam,
+        sparse_threshold=sparse_threshold,
+        inflation_std=inflation_std,
     )
 
     ## Experiment 2: 3dvar + EKI ##
@@ -151,6 +151,9 @@ def run_all(MODELNAME="L63", meta_dir="results", seed=0):
         ode_settings_approx=ODE_SETTINGS_APPROX,
         ode_settings_true=ODE_SETTINGS_TRUE,
         da_settings=DA_SETTINGS,
+        lam=lam,
+        sparse_threshold=sparse_threshold,
+        inflation_std=inflation_std,
     )
 
     ## Experiment 3: EnKF + EKI ##
@@ -175,6 +178,9 @@ def run_all(MODELNAME="L63", meta_dir="results", seed=0):
         ode_settings_approx=ODE_SETTINGS_APPROX,
         ode_settings_true=ODE_SETTINGS_TRUE,
         da_settings=DA_SETTINGS,
+        lam=lam,
+        sparse_threshold=sparse_threshold,
+        inflation_std=inflation_std,
     )
 
     ## Run experiments:
@@ -203,15 +209,29 @@ if __name__ == "__main__":
 
     # meta_dir = 'results_NN_1stepahead_fixedt0Bug/run_tpInf_trueIC_fullObs_v2'
     # meta_dir = "results_Oct24_2023_v2/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters"
-    meta_dir = "results_Apr4_2024_v0/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters_NN_L1"
-    for seed in [1]:
+    meta_dir = "results_May14_PLOTTINGBUGFIXED/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters_NN_L1"
+    c = -1
+    for seed in [1, 1]:
+        c += 1
         # print('Running L63 experiments...')
         # run_all('L63', meta_dir=os.path.join(
         #     meta_dir, f'L63_{seed}'), seed=seed)
-
-        print("Running Ultradian experiments...")
-        run_all(
-            "UltradianGlucoseModel",
-            meta_dir=os.path.join(meta_dir, f"UltradianGlucoseModel_{seed}_5hidden"),
-            seed=seed,
-        )
+        DAsteps = 50
+        nSamples = 50
+        for lam in [10.0]:
+            for sparse_threshold in [0.1]:
+                for inflation_std in [1e-2, 1e-3]:
+                    print("Running Ultradian experiments...")
+                    run_all(
+                        "UltradianGlucoseModel",
+                        meta_dir=os.path.join(
+                            meta_dir,
+                            f"UltradianGlucoseModel_seed{seed}_5hidden_sparse{sparse_threshold}_lam{lam}_inflation{inflation_std}_DAsteps{DAsteps}_nSamples{nSamples}_run{c}",
+                        ),
+                        seed=seed,
+                        lam=lam,
+                        sparse_threshold=sparse_threshold,
+                        inflation_std=inflation_std,
+                        DAsteps=DAsteps,
+                        nSamples=nSamples,
+                    )

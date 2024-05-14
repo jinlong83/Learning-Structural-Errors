@@ -16,7 +16,8 @@ class EKI:
     # INPUTS:
     # parameters.shape = (num_ensembles, num_parameters)
     # observations = truth + N(0, cov)
-    def __init__(self, parameters, truth, cov, r = 1.0, counter_max = 3):
+    def __init__(self, parameters, truth, cov, r = 1.0, counter_max = 3,
+                 lam=1.0, sparse_threshold=0.1, inflation_std=1e-3, cov_inflation_std=1e-8):
 
         assert (parameters.ndim == 2), \
             'EKI init: parameters must be 2d array, num_ensembles x num_parameters'
@@ -61,10 +62,10 @@ class EKI:
         # self.lam = 1.0  # L1-norm upper bound
         # self.sparse_threshold = 0.1  # threshold for sparsity
         # self.inflation_std = 1e-3  # standard deviation for inflation
-        self.lam = 1.0  # L1-norm upper bound
-        self.sparse_threshold = 0.1  # threshold for sparsity
-        self.inflation_std = 1e-3  # standard deviation for inflation (parameters)
-        self.cov_inflation_std = 1e-8  # covariance inflation (data and parameters)
+        self.lam = lam  # L1-norm upper bound
+        self.sparse_threshold = sparse_threshold  # threshold for sparsity
+        self.inflation_std = inflation_std  # standard deviation for inflation (parameters)
+        self.cov_inflation_std = cov_inflation_std  # covariance inflation (data and parameters)
 
     # Parameters corresponding to minimum error.
     # Returns mean and standard deviation.
@@ -166,7 +167,7 @@ class EKI:
         return np.dot(Hs, w_new)
 
     # g: data, i.e. g(u), with shape (num_ensembles, num_elements)
-    def EnKI(self, g):
+    def EnKI(self, g, inflate_u=True):
 
         u = np.copy(self.u[-1])
         g_t = self.g_t
@@ -239,7 +240,8 @@ class EKI:
         for iterN in range(g.shape[0]):
             u[iterN] = self.constrainedOptim(w[iterN], w_hat[iterN], c_ww_inv, Hp, Hs)
             u[iterN] = u[iterN] * (np.abs(u[iterN]) > self.sparse_threshold)
-            u[iterN] = u[iterN] + np.random.normal(0,self.inflation_std,u[iterN].shape[0])
+            if inflate_u:
+                u[iterN] = u[iterN] + np.random.normal(0,self.inflation_std,u[iterN].shape[0])
 
         # Store parameters and observations
         self.u = np.append(self.u, [u], axis=0)
