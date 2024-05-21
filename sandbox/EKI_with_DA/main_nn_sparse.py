@@ -209,7 +209,7 @@ if __name__ == "__main__":
 
     # meta_dir = 'results_NN_1stepahead_fixedt0Bug/run_tpInf_trueIC_fullObs_v2'
     # meta_dir = "results_Oct24_2023_v2/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters"
-    meta_dir = "results_May14_PLOTTINGBUGFIXED/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters_NN_L1"
+    meta_dir = "results_May14_PLOTTINGBUGFIXED_textTrue2/PartialObs_MoreNoise_unknownIC_modelError_NN1.0_INV_50particles_50iters_NN_L1"
     c = -1
     for seed in [1, 1]:
         c += 1
@@ -220,7 +220,7 @@ if __name__ == "__main__":
         nSamples = 50
         for lam in [10.0]:
             for sparse_threshold in [0.1]:
-                for inflation_std in [1e-2, 1e-3]:
+                for inflation_std in [1e-2]:
                     print("Running Ultradian experiments...")
                     run_all(
                         "UltradianGlucoseModel",

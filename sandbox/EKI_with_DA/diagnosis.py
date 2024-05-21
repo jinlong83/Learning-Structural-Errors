@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 from pdb import set_trace as bp
+from matplotlib.ticker import MaxNLocator
 
 matplotlib.rcParams["text.usetex"] = False
 
@@ -24,7 +25,7 @@ matplotlib.rcParams.update(param_dict)
 def plotPhi(steps, Phi, filename):
     plt.figure()
     plt.plot(steps, Phi * 100, "o-", color="b")
-    plt.xticks(steps)
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
     plt.xlabel("EnKI Steps")
     plt.ylabel(r"$\|y-G(\theta)\|_{\Gamma}/\|y\|_{\Gamma} (\%)$")
     plt.yscale("log")
@@ -36,6 +37,7 @@ def plotPhi(steps, Phi, filename):
 def plotTheta(steps, mean, var, truth, ylabel, filename):
     plt.figure()
     plt.plot(steps, mean, "o-", color="b", label="Ensemble mean")
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
     plt.fill_between(
         steps,
         mean - 2 * var,
@@ -48,7 +50,6 @@ def plotTheta(steps, mean, var, truth, ylabel, filename):
         plt.hlines(truth, np.min(steps), np.max(steps), "r", "dashed", label="Truth")
     lg = plt.legend(loc=0)
     lg.draw_frame(False)
-    plt.xticks(steps)
     plt.xlabel("EnKI Steps")
     plt.ylabel(ylabel)
     plt.tight_layout()
